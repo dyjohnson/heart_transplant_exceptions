@@ -1,0 +1,639 @@
+---
+title: "data_prep"
+author: "Daniel Johnson"
+date: "08/08/2022"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
+  html_notebook:
+    theme: journal
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+---
+# Setup
+
+```{r setup, include=FALSE}
+library(knitr)
+library(tidyverse)
+library(lubridate)
+library(haven)
+library(rmdformats)
+library(consort)
+
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Data sources
+
+## Read in Standard Scientific Registry of Transplant Recipients (SRTR) SAF files
+```{r data_in}
+cand_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/cand_thor.sas7bdat")
+JustFormHR <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/SupplementalData2206/ThoracicRegistration/JustFormHR.sas7bdat")
+load("C:/Users/dyjohnson/Box/Heart Data Pipeline/RData files/full_list_pubsaf2206.RData")
+```
+
+## Fix transplant center
+```{r CAN_LISTING_CTR_ID}
+full_list <- full_list %>%
+  select(-CAN_LISTING_CTR_ID) %>%
+  left_join(cand_thor %>%
+              select(PX_ID, CAN_LISTING_CTR_ID),
+            by = "PX_ID")
+```
+
+## Add number of candidates per listing center per year 
+```{r can_listing_ctr_count}
+cand_thor <- cand_thor %>%
+  group_by(CAN_LISTING_CTR_ID, year(CAN_LISTING_DT)) %>%
+  mutate(can_listing_ctr_count = n()) %>%
+  ungroup()
+
+full_list <- full_list  %>%
+  left_join(cand_thor %>%
+              select(PX_ID, can_listing_ctr_count),
+            by = "PX_ID")
+```
+
+## Add application variables from JustFormHR
+```{r JustFormHR_vars}
+full_list <- full_list  %>%
+  left_join(JustFormHR %>%
+              select(JustId, FormEffectiveDt, FormExpirationDt, ApplicationStatus, ApplicationStatus_descrip),
+            by = "JustId")
+```
+
+## Filter events needed
+```{r filter_data}
+full_list <- full_list %>%
+  filter(
+    grepl(
+      "CAN_LISTING_DT|PERS_OPTN_DEATH_DT|PERS_OPTN_DEATH_DT|PERS_RESTRICT_DEATH_DT|CAN_REM_DT|CANHX_BEGIN_DT|REC_TX_DT|ChangeDt",
+      unique_event
+    )
+  )
+```
+
+## Save the filtered data
+```{r save_filtered_data}
+setwd("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP")
+
+save(full_list, file = "full_list_filtered.RData")
+```
+
+# Data management
+
+## Load filtered data
+```{r load_filtered_data}
+load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_filtered.RData")
+```
+
+## Add a copy of CANHX_STAT_CD where a candidate's most recent status is carried through temporarily inactive periods
+```{r can_stat_active}
+full_list <- full_list %>%
+  mutate(can_stat_active = factor(case_when(
+    !(CANHX_STAT_CD %in% c(1999, 2999)) ~ CANHX_STAT_CD
+    ))) %>%
+  group_by(PX_ID) %>%
+  fill(can_stat_active, .direction = "down") %>%
+  ungroup()
+```
+
+## Drop inactive rows for patients who list as inactive
+``` {r drop_inactive}
+full_list <- full_list %>% 
+  filter(!is.na(can_stat_active))
+```
+
+## Add a time-dependent variable indicating whether a candidate is receiving a status exception
+```{r rec_exception}
+# Remove justification forms that aren't for approved exceptions
+full_list <- full_list %>%
+  mutate(
+    across(
+      c(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, ApplicationStatus, ApplicationStatus_descrip, Exception),
+      ~ case_when(Exception == 1 & ApplicationStatus %in% c(8, 10, 12, 13, 14, 16, 19, 27) ~ .)
+    )
+  )
+
+# Fill application data from JustFormHR through exception period
+full_list <- full_list %>% 
+  group_by(PX_ID) %>%
+  fill(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, Exception, ApplicationStatus, ApplicationStatus_descrip, .direction = "down") %>%
+  mutate(
+    across(
+      c(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, Exception, ApplicationStatus, ApplicationStatus_descrip),
+      ~ case_when(unique_date <= FormExpirationDt ~ .)
+    )
+  ) %>%
+  ungroup()
+
+# status_approved represents a candidate's approved status and fills forward
+full_list <- full_list %>%
+  mutate(status_approved = case_when(
+    Exception == 1 &
+      ApplicationStatus %in% c(8, 10, 12, 13, 14, 16, 19, 27) ~ RequestedCandStatCd
+    )
+  ) %>%
+  group_by(PX_ID) %>%
+  fill(status_approved, .direction = "down") %>%
+  ungroup()
+
+# rec_exception = 1 when a candidate's status matches their approved exception status and the date is before the expiration date
+full_list <- full_list %>%
+  mutate(
+    rec_exception = if_else(can_stat_active == status_approved & unique_date <= FormExpirationDt, 1, 0)
+  )
+```
+
+## Add a variable for whether a candidate ever received a status exception
+``` {r rec_exception_ever}
+full_list <- full_list %>%
+  mutate(rec_exception_ever = case_when(rec_exception == 1 ~ 1)) %>%
+  group_by(PX_ID) %>%
+  fill(rec_exception_ever, .direction = "downup") %>%
+  ungroup() %>%
+  mutate(rec_exception_ever = replace_na(rec_exception_ever, 0))
+```
+
+## Add FormExpirationDt as an event for exception forms that expire
+``` {r FormExpirationDt}
+expirations <- full_list %>%
+  filter(rec_exception_ever == 1) %>%
+  group_by(PX_ID) %>%
+  mutate(rec_exception_next = lead(rec_exception),
+         exception_change = case_when(
+             rec_exception != rec_exception_next ~ 1,
+           TRUE ~ 0,
+         ),
+         last_dt_temp = max(unique_date)
+         ) %>%
+  ungroup() %>%
+  filter(exception_change == 1) %>%
+  mutate(unique_date = FormExpirationDt, 
+         unique_event = "FormExpirationDt",
+         rec_exception = 0) %>%
+  filter(unique_date <= last_dt_temp) %>%
+  select(-c(rec_exception_next, exception_change, last_dt_temp)) %>%
+  unique()
+
+full_list <- expirations %>%
+  bind_rows(full_list) %>%
+  arrange(PX_ID, unique_date) %>%
+  group_by(PX_ID) %>%
+  fill(everything(), .direction = "down") %>%
+  filter(unique_event != "FormExpirationDt" | unique_date >= FormExpirationDt) %>%  
+  #   mutate(
+  #   JustId = case_when(
+  #     unique_event == "FormExpirationDt" |
+  #       unique_date <= FormExpirationDt ~ JustId
+  #   ),
+  #   FormEffectiveDt = case_when(
+  #     unique_event == "FormExpirationDt" |
+  #       unique_date <= FormExpirationDt ~ FormEffectiveDt
+  #   ),
+  #   FormExpirationDt = case_when(
+  #     unique_event == "FormExpirationDt" |
+  #       unique_date <= FormExpirationDt ~ FormExpirationDt
+  #   ),
+  #   RequestedCandStatCd = case_when(
+  #     unique_event == "FormExpirationDt" |
+  #       unique_date <= FormExpirationDt ~ RequestedCandStatCd
+  #   ),
+  #   Exception = case_when(
+  #     unique_event == "FormExpirationDt" |
+  #       unique_date <= FormExpirationDt ~ Exception
+  #   ),
+  #   ApplicationStatus = case_when(
+  #     unique_event == "FormExpirationDt" |
+  #       unique_date <= FormExpirationDt ~ ApplicationStatus
+  #   ),
+  #   ApplicationStatus_descrip = case_when(
+  #     unique_event == "FormExpirationDt" |
+  #       unique_date <= FormExpirationDt ~ ApplicationStatus_descrip
+  #   )
+  # )
+  mutate(
+    across(
+      c(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, Exception, ApplicationStatus, ApplicationStatus_descrip),
+      ~ case_when(unique_event == "FormExpirationDt" | unique_date < FormExpirationDt ~ .)
+    )
+  )
+
+# If FormExpirationDt is on the same date as another event for a patient, merge the rows
+duplicates <- full_list %>% 
+  group_by(PX_ID, unique_date) %>% 
+  filter(n() > 1) %>%
+  mutate(unique_event = str_c(unique_event, collapse = ",")) %>%
+  summarise(
+    across(
+      c(everything(), -rec_exception),
+      ~last(na.omit(.))
+    ),
+    rec_exception = max(rec_exception)
+  ) %>%
+  ungroup()
+
+uniques <- full_list %>%
+  group_by(PX_ID, unique_date) %>% 
+  filter(n() <= 1) %>%
+  ungroup()
+
+full_list <- uniques %>%
+  bind_rows(duplicates) %>%
+  arrange(PX_ID, unique_date)
+
+rm(uniques, duplicates)
+```
+
+## Recalculate t_start and t_stop
+```{r t_start_t_stop}
+full_list <- full_list %>%
+  ungroup() %>% 
+  mutate(t_start = 0, t_stop = 0) %>% 
+  arrange(PX_ID, unique_date)
+
+for (i in 2:nrow(full_list)) {
+  if (full_list$PX_ID[[i]] == 
+      full_list$PX_ID[[i-1]]) {
+    
+    full_list$t_stop[[i-1]] = 
+      full_list$unique_date[[i]] - 
+      full_list$unique_date[[i-1]] +
+      full_list$t_start[[i-1]]
+    
+    full_list$t_start[[i]] = full_list$t_stop[[i-1]]
+    
+  } else {
+    
+    full_list$t_stop[[i-1]] = 
+      full_list$t_start[[i-1]]
+    
+    full_list$t_start[[i]] = 0
+      
+  }
+}
+
+full_list <- full_list %>% 
+  relocate(t_start, t_stop, .after = unique_date)
+```
+
+## Add length of statuses
+```{r status_length}
+full_list <- full_list %>%
+  group_by(PX_ID) %>%
+  mutate(
+    can_stat_active_prev = lag(can_stat_active),
+    can_stat_active_next = lead(can_stat_active),
+    stat_start = case_when(
+      can_stat_active != can_stat_active_prev | is.na(can_stat_active_prev) ~ t_start
+    ),
+    stat_stop = case_when(
+      can_stat_active != can_stat_active_next | is.na(can_stat_active_next) ~ t_stop
+    )
+  ) %>%
+  fill(stat_start, .direction = "down") %>%
+  fill(stat_stop, .direction = "up") %>%
+  mutate(stat_length = stat_stop - stat_start) %>% 
+  select(-c(can_stat_active_prev, can_stat_active_next))
+```
+
+## Add length of exceptions
+```{r exception_length}
+full_list <- full_list %>%
+  group_by(PX_ID) %>%
+  mutate(
+    rec_exception_prev = lag(rec_exception),
+    rec_exception_next = lead(rec_exception),
+    exception_start = case_when(
+      rec_exception != rec_exception_prev | 
+        is.na(rec_exception_prev) ~ t_start
+    ),
+    exception_stop = case_when(
+      rec_exception != rec_exception_next |
+        is.na(rec_exception_next) ~ t_stop
+    )
+  ) %>%
+  fill(exception_start, .direction = "down") %>%
+  fill(exception_stop, .direction = "up") %>%
+  mutate(
+    exception_start = case_when(rec_exception == 1 ~ exception_start),
+    exception_stop = case_when(rec_exception == 1 ~ exception_stop),
+    exception_length = case_when(rec_exception == 1 ~ exception_stop - exception_start) 
+  ) %>% 
+  select(-c(rec_exception_prev, rec_exception_next))
+```
+
+## Add a variable for whether a candidate received an exception at listing
+``` {r rec_exception_init}
+full_list <- full_list %>%
+  mutate(rec_exception_init = case_when(rec_exception == 1 &
+                                          (exception_start == 0 | exception_start == 1) ~ 1)) %>%
+  group_by(PX_ID) %>%
+  fill(rec_exception_init, .direction = "downup") %>%
+  ungroup() %>%
+  mutate(rec_exception_init = replace_na(rec_exception_init, 0))
+```
+
+## Add a variable for whether a candidate received an exception at listing or later
+```{r rec_exception_init_ever}
+full_list <- full_list %>%
+  mutate(
+    rec_exception_init_ever = factor(
+      case_when(
+        rec_exception_init == 1 ~ "Exception at listing",
+        rec_exception_ever == 1 ~ "Exception after listing",
+        TRUE ~ "No exception"
+      )
+    )
+  )
+```
+
+## Add death date, which basically combines both the OPTN and SSA death dates
+```{r death_dt}
+full_list <- full_list %>%
+  mutate(death_dt = case_when(
+    grepl("PERS_OPTN_DEATH_DT", unique_event) |
+      grepl("PERS_SSA_DEATH_DT", unique_event) |
+      (grepl("CAN_REM_DT", unique_event) &
+         CAN_REM_CD == 8) ~ unique_date
+  )) %>%
+  group_by(PX_ID) %>%
+  fill(death_dt, .direction = "downup") %>%
+  ungroup() 
+```
+
+## Add death
+```{r death}
+# Several patients may be removed from the waitlist without getting a transplant but still die. This variable death accounts for that. Basically, if a patient has a removal code for anything other than transplantation and has a death_dt on file, then they are coded as having died.
+# Check deaths
+full_list <- full_list %>%
+  mutate(death = case_when(
+    unique_date >= death_dt &
+      CAN_REM_CD %in% c(5, 6, 7, 8, 9, 10, 12, 13, 16, 17, 20, 24) ~ 1,
+    TRUE ~ 0
+  ))
+```
+
+## Add removal cause. If a patient is not removed from the waitlist yet, then they are coded as 0. Death = 1. Transplant = 2. All other causes = 3.
+```{r removal_cause}
+full_list <- full_list %>%
+  mutate(
+    removal_cause = case_when(
+      is.na(CAN_REM_CD) ~ 0,
+      death == 1 ~ 1,
+      CAN_REM_CD %in% c(4, 14, 15, 18, 19, 21, 22, 23) ~ 2,
+      TRUE ~ 3
+    )
+  )
+```
+
+## Add removal date to account for censoring, death, and transplant
+```{r final_removal_dt}
+# Extract listing, removal, and transplant dates
+full_list <- full_list %>%
+  mutate(
+    CAN_LISTING_DT = case_when(grepl("CAN_LISTING_DT", unique_event) ~ unique_date),
+    CAN_REM_DT = case_when(grepl("CAN_REM_DT", unique_event) ~ unique_date),
+    REC_TX_DT = case_when(grepl("REC_TX_DT", unique_event) ~ unique_date)
+  ) %>%
+  group_by(PX_ID) %>%
+  fill(CAN_LISTING_DT, CAN_REM_DT, REC_TX_DT, .direction = "downup") %>%
+  ungroup()
+
+# Create a new variable for the removal date to account for censoring, death, and transplant
+full_list <- full_list %>%
+  group_by(PX_ID) %>%
+  mutate(
+    final_removal_dt = min(case_when(
+      removal_cause == 0 ~ max(unique_date), # If they are still on the waitlist, final_removal_dt = most recent record date
+      removal_cause == 1 ~ death_dt, # If they died, final_removal_dt = death date
+      removal_cause == 2 ~ REC_TX_DT, # If they were transplanted, final_removal_dt = transplant date
+      removal_cause == 3 ~ CAN_REM_DT # If they were removed for any other reason, final_removal_dt = removal date
+    ))
+  ) %>%
+  ungroup()
+```
+
+## Add pre-transplant survival time
+```{r survival_time}
+full_list <- full_list %>%
+  mutate(survival_time = as.numeric(difftime(final_removal_dt, CAN_LISTING_DT, units = "days")))
+```
+
+## Add active time on waitlist
+``` {r active_time}
+full_list_active <- full_list %>%
+  group_by(PX_ID) %>%
+  mutate(
+    t_diff = case_when(
+      !(CANHX_STAT_CD %in% c(1999, 2999)) ~ t_stop - t_start
+    )
+  ) %>%
+  summarise(
+    PX_ID = first(PX_ID),
+    active_time = sum(t_diff, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+full_list <- full_list %>%
+  left_join(full_list_active, by = "PX_ID")
+```
+
+# Select variables
+``` {r select_variables}
+full_list <- full_list %>%
+  select(
+    # cand_thor variables
+    PX_ID,
+    CAN_AGE_IN_MONTHS_AT_LISTING,
+    CAN_LISTING_CTR_ID,
+    CAN_LISTING_DT,
+    CAN_INIT_STAT,
+    CANHX_STAT_CD,
+    REC_TX_DT,
+    WL_ORG,
+    
+    # JustFormHR variables
+    JustId,
+    ApplicationStatus,
+    Exception,
+    RequestedCandStatCd,
+    
+    # heart_data_pipeline variables
+    unique_event,
+    unique_date,
+    t_start,
+    t_stop,
+    
+    # New variables
+    can_listing_ctr_count,
+    death,
+    can_stat_active,
+    rec_exception,
+    rec_exception_ever,
+    rec_exception_init,
+    rec_exception_init_ever,
+    exception_start,
+    exception_stop,
+    exception_length,
+    removal_cause,
+    final_removal_dt,
+    survival_time,
+    active_time
+  )
+```
+
+# Select patients
+```{r select_patients}
+full_list <- full_list %>%
+  group_by(PX_ID) %>%
+  filter(
+    CAN_AGE_IN_MONTHS_AT_LISTING >= 216 &
+      CAN_LISTING_DT >= as.Date("2018-10-18") &
+      CAN_LISTING_DT <= as.Date("2021-12-01")
+  ) %>%
+  ungroup()
+
+# Save data for CONSORT diagram before applying exclusion criteria
+setwd("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP")
+
+save(full_list, file = "full_list_consort.RData")
+
+# Exclusion criteria
+full_list <- full_list %>%
+  group_by(PX_ID) %>%
+  filter(
+    min(as.numeric(as.character(CANHX_STAT_CD))) != 2999 &
+      min(as.numeric(as.character(CANHX_STAT_CD))) %in% c(2110, 2120, 2130, 2140, 2150, 2160, 2999) &
+      WL_ORG == "HR" &
+      can_listing_ctr_count >= 10 &
+      active_time >= 14
+  ) %>%
+  ungroup()
+```
+
+# Save data for the funnel plot before merging last two rows for each patient
+```{r save_funnel_data}
+full_list_for_funnel <- full_list
+
+setwd("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP")
+
+save(full_list_for_funnel, file = "full_list_for_funnel.RData")
+```
+
+# Combine the last two rows for each patient so their final row isn't a single day
+```{r final_row}
+# Turn unique_date into unique_date_start and add unique_date_stop
+full_list <- full_list %>%
+  rename(unique_date_start = unique_date) %>% 
+  arrange(PX_ID, unique_date_start) %>% 
+  group_by(PX_ID) %>% 
+  mutate(unique_date_stop = lead(unique_date_start)) %>%
+  relocate(unique_date_stop, .after = unique_date_start) %>%
+  ungroup()
+
+# Merge the data in the last two rows for each patient
+full_list_head <- full_list_for_funnel %>%
+  group_by(PX_ID) %>%
+  slice_head(n = -2) %>%
+  ungroup()
+
+full_list_tail <- full_list %>%
+  group_by(PX_ID) %>%
+  slice_tail(n = 2) %>%
+  mutate(unique_event = str_c(unique_event, collapse = ",")) %>%
+  summarise(
+    across(
+      c(everything(),-unique_date_start,-t_start),
+      ~last(na.omit(.))
+    ),
+    unique_date_start = min(unique_date_start, na.rm = TRUE),
+    t_start = min(t_start, na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  relocate(unique_event, unique_date_start, .before = unique_date_stop) %>%
+  relocate(t_start, .before = t_stop)
+
+full_list_temp3 <- full_list_head %>%
+  bind_rows(full_list_tail) %>%
+  arrange(PX_ID, unique_date_start)
+
+rm(full_list_head, full_list_tail)
+```
+
+# Aggregate rows without changes in status or exception
+``` {r aggregate}
+full_list_temp <- full_list_for_funnel %>%
+  rename(unique_date_start = unique_date) %>% 
+  arrange(PX_ID, unique_date_start) %>% 
+  group_by(PX_ID) %>% 
+  mutate(unique_date_stop = lead(unique_date_start)) %>%
+  relocate(unique_date_stop, .after = unique_date_start) %>%
+  ungroup()
+
+full_list_temp3 <- full_list_temp3 %>%
+  group_by(PX_ID) %>%
+  mutate(
+    can_stat_active_prev = lag(can_stat_active),
+    can_stat_active_next = lead(can_stat_active),
+    stat_start = case_when(
+      can_stat_active != can_stat_active_prev | is.na(can_stat_active_prev) ~ t_start
+    ),
+    stat_stop = case_when(
+      can_stat_active != can_stat_active_next | is.na(can_stat_active_next) ~ t_stop
+    )
+  ) %>%
+  fill(stat_start, .direction = "down") %>%
+  fill(stat_stop, .direction = "up") %>%
+  mutate(stat_length = stat_stop - stat_start) %>% 
+  select(-c(can_stat_active_prev, can_stat_active_next))
+
+full_list_temp3 <- full_list_temp3 %>%
+  group_by(PX_ID, exception_start, stat_start) %>%
+  mutate(unique_event = str_c(unique_event, collapse = ",")) %>%
+  summarise(
+    across(
+      c(everything(),-unique_date_start,-t_start),
+      ~last(na.omit(.))
+    ),
+    unique_date_start = min(unique_date_start, na.rm = TRUE),
+    t_start = min(t_start, na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  relocate(unique_event, unique_date_start, .before = unique_date_stop) %>%
+  relocate(t_start, .before = t_stop) %>% 
+  relocate(exception_start, .before = exception_stop) %>%
+  relocate(stat_start, .before = stat_stop) %>%
+  arrange(PX_ID, unique_date_start)
+
+full_list_temp2 <- full_list_temp2 %>%
+  group_by(PX_ID) %>%
+  mutate(count2 = n()) %>%
+  ungroup()
+
+full_list_temp3 <- full_list_temp3 %>%
+  group_by(PX_ID) %>%
+  mutate(count3 = n()) %>%
+  ungroup()
+
+counts <- full_list_temp3 %>%
+  left_join(
+    full_list_temp2 %>% select(PX_ID, count2), by = "PX_ID"
+  )
+
+diff <- counts %>% filter(count2 != count3) %>% select(PX_ID, count2, count3)
+
+full_list_temp2 %>% filter(PX_ID %in% diff$PX_ID) %>% View()
+
+```
+
+# Save final data
+```{r save_clean_data}
+setwd("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP")
+
+save(full_list, file = "full_list_clean.RData")
+
+write_csv(full_list, "full_list_clean.csv")
+```
