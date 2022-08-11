@@ -1,0 +1,51 @@
+---
+title: "sankey_plot"
+author: "Daniel Johnson"
+date: "2022-08-11"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
+  html_notebook:
+    theme: journal
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+---
+# Setup
+
+```{r setup, include=FALSE}
+library(knitr)
+library(tidyverse)
+library(ggsankey)
+
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Data sources
+```{r data_in}
+load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
+```
+
+# Sankey plot
+```{r sankey}
+library(ggsankey)
+
+data(mtcars)
+
+df <- mtcars %>%
+  make_long(cyl, vs, am, gear, carb)
+
+# for_sankey <- full_list %>%
+#   make_long(can_stat_active)
+
+ggplot(df, aes(x = x, 
+               next_x = next_x, 
+               node = node, 
+               next_node = next_node,
+               fill = factor(node),
+               label = node)) +
+  geom_sankey() +
+  geom_sankey_label() +
+  theme_sankey(base_size = 16)
+```
