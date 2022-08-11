@@ -1,0 +1,401 @@
+---
+title: "candidate_characteristics"
+author: "Daniel Johnson"
+date: "2022-08-11"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
+  html_notebook:
+    theme: journal
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+---
+
+# Setup
+
+```{r setup, include=FALSE}
+library(knitr)
+library(tidyverse)
+library(lubridate)
+library(haven)
+library(coxme)
+library(survminer)
+library(rmdformats)
+library(gtsummary)
+library(sjPlot)
+library(sjlabelled)
+library(sjmisc)
+library(consort)
+
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Data sources
+```{r data_in}
+load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
+cand_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/cand_thor.sas7bdat")
+```
+
+# Patient characteristics
+```{r table_1}
+full_list_px <- full_list %>%
+  select(PX_ID, rec_exception_ever, rec_exception_init, exception_start, exception_length, survival_time) %>%
+  filter(rec_exception_ever == 0 | !is.na(exception_start)) %>%
+  distinct() %>%
+  group_by(PX_ID) %>%
+  summarise(PX_ID = PX_ID, 
+            rec_exception_ever = rec_exception_ever, 
+            rec_exception_init = rec_exception_init,
+            exception_start = if_else(rec_exception_ever == 1, min(exception_start, na.rm = TRUE), NA_real_),
+            exception_percent = sum(exception_length, na.rm = TRUE)/survival_time * 100
+            ) %>%
+  distinct() %>%
+  left_join(cand_thor, by = "PX_ID") %>%
+  ungroup()
+
+fortable1 <- full_list_px %>%
+  mutate(
+    age = CAN_AGE_AT_LISTING,
+    agegroup = factor(
+      case_when(
+        age >= 18 & age < 35 ~ "18-34",
+        age >= 35 & age < 55 ~ "35-54",
+        age >= 55 & age < 65 ~ "55-64",
+        age >= 65 & age < 75 ~ "65-74",
+        age >= 75 ~ ">75"
+      ),
+      levels = c("18-34",
+                 "35-54",
+                 "55-64",
+                 "65-74",
+                 ">75")
+    ),
+    sex = factor(
+      case_when(CAN_GENDER == "M" ~ "Male",
+                TRUE ~ "Female"),
+      levels = c("Male", "Female")
+    ),
+    race = factor(
+      case_when(
+        CAN_RACE == 8 ~ "White",
+        CAN_RACE == 16 ~ "Black",
+        CAN_RACE == 2000 ~ "Hispanic",
+        CAN_RACE == 64 ~ "Asian",
+        TRUE ~ "Other"
+      ),
+      levels = c("White",
+                 "Black",
+                 "Hispanic",
+                 "Asian",
+                 "Other")
+    ),
+    functional_status = factor(
+      case_when(
+        CAN_FUNCTN_STAT > 2079 ~ "Little to no impairment, 80-100%",
+        CAN_FUNCTN_STAT > 2049 &
+          CAN_FUNCTN_STAT < 4071 ~ "Moderate impairment, 50-70%",
+        CAN_FUNCTN_STAT > 2009 &
+          CAN_FUNCTN_STAT < 4041 ~ "Severe impairment, 10-40%",
+        TRUE ~ "Unknown"
+      )
+    ),
+    blood_type = factor(
+      case_when(
+        CAN_ABO %in% c("A", "A1", "A2") ~ "A",
+        CAN_ABO %in% c("A1B", "A2B") ~ "AB",
+        TRUE ~ CAN_ABO
+      )
+    ),
+    payor = factor(
+      case_when(
+        CAN_PRIMARY_PAY %in% c(2, 3, 4, 5, 6, 7, 13) ~ "Public",
+        CAN_PRIMARY_PAY == 1 ~ "Private",
+        TRUE ~ "Other"
+      ),
+      levels = c("Private",
+                 "Public",
+                 "Other")
+    ),
+    primary_diagnosis = factor(
+      case_when(
+        CAN_DGN %in% c(
+          1000,
+          1001,
+          1002,
+          1003,
+          1004,
+          1005,
+          1006,
+          1049,
+          1050,
+          1051,
+          1052,
+          1053,
+          1054,
+          1099,
+          1201
+        ) ~ "Nonischemic cardiomyopathy",
+        CAN_DGN == 1007 ~ "Ischemic cardiomyopathy",
+        TRUE ~ "Other"
+      )
+    ),
+    rec_exception_init_ever = factor(
+      case_when(
+        rec_exception_init == 1 ~ "Initial exception",
+        rec_exception_ever == 1 ~ "Later exception",
+        TRUE ~ "No exception"
+      )
+    ),
+    rec_exception_ever = factor(
+      case_when(
+        rec_exception_ever == 1 ~ "Status exception",
+        TRUE ~ "No status exception"
+      ),
+      levels = c("Status exception",
+                 "No status exception")
+    ),
+    rec_exception_init = factor(
+      case_when(
+        rec_exception_init == 1 ~ "Initial status exception",
+        TRUE ~ "No initial status exception"
+      ),
+      levels = c("Initial status exception",
+                 "No initial status exception")
+    ),
+    diabetes = factor(
+      case_when(
+        CAN_DIAB_TY %in% c(2, 3, 4, 5) ~ "Diabetes",
+        CAN_DIAB_TY == 1 ~ "No diabetes",
+        TRUE ~ "Unknown"
+      )
+    ),
+    cva = factor(
+      case_when(
+        CAN_CEREB_VASC == "Y" ~ "CVA",
+        CAN_CEREB_VASC == "N" ~ "No CVA",
+        TRUE ~ "Unknown"
+      )
+    ),
+    smoking = factor(
+      case_when(CAN_HIST_CIGARETTE == "Y" ~ "Smoking",
+                TRUE ~ "No smoking"),
+      levels = c("Smoking",
+                 "No smoking")
+    ),
+    aicd = factor(
+      case_when(
+        CAN_IMPLANT_DEFIB == "Y" ~ "AICD",
+        CAN_IMPLANT_DEFIB == "N" ~ "No AICD",
+        TRUE ~ "Unknown"
+      )
+    ),
+    init_status = factor(
+      case_when(
+        CAN_INIT_STAT == 2110 ~ "Status 1",
+        CAN_INIT_STAT == 2120 ~ "Status 2",
+        CAN_INIT_STAT == 2130 ~ "Status 3",
+        CAN_INIT_STAT == 2140 ~ "Status 4",
+        CAN_INIT_STAT == 2150 ~ "Status 5",
+        CAN_INIT_STAT == 2160 ~ "Status 6",
+        CAN_INIT_STAT == 2999 ~ "Temporarily inactive"
+      )
+    ),
+    bsa = 0.007184 * (CAN_HGT_CM ^ 0.725) * (CAN_WGT_KG ^ 0.425),
+    cardiac_index = CAN_CARDIAC_OUTPUT / bsa,
+    CAN_IV_INOTROP = factor(
+      case_when(
+        CAN_IV_INOTROP == 0 ~ "No",
+        CAN_IV_INOTROP == 1 ~ "Yes",
+        TRUE ~ "Unknown"
+      )
+    ),
+    CAN_IABP = factor(
+      case_when(CAN_IABP == 0 ~ "No",
+                CAN_IABP == 1 ~ "Yes",
+                TRUE ~ "Unknown")
+    ),
+    CAN_ECMO = factor(
+      case_when(CAN_ECMO == 0 ~ "No",
+                CAN_ECMO == 1 ~ "Yes",
+                TRUE ~ "Unknown")
+    ),
+    mcsd = factor(
+      case_when(
+        CAN_VAD_TY == 1 ~ "None",
+        CAN_VAD_TY == 2 ~ "LVAD",
+        CAN_VAD_TY == 3 ~ "RVAD",
+        CAN_VAD_TY == 4 ~ "TAH",
+        CAN_VAD_TY == 5 ~ "BiVAD",
+        TRUE ~ "Unknown"
+      ),
+      levels = c("None",
+                 "LVAD",
+                 "RVAD",
+                 "TAH",
+                 "BiVAD",
+                 "Unknown")
+    ),
+    lvad = factor(
+      case_when(
+        CAN_VAD_TY == 2 ~ "Durable LVAD",
+        TRUE ~ "No durable LVAD"
+      ),
+      levels = c("Durable LVAD",
+                 "No durable LVAD")
+    ),
+    other_mcs = factor(
+      case_when(
+        CAN_VAD_TY %in% c(3, 4, 5) ~ "Other MCS",
+        TRUE ~ "No other MCS"
+      ),
+      levels = c("Other MCS",
+                 "No other MCS")
+    ),
+    no_mcs = factor(
+      case_when(
+        !(CAN_VAD_TY %in% c(2, 3, 4, 5)) ~ "No MCS",
+        TRUE ~ "MCS"
+      ),
+      levels = c("No MCS",
+                 "MCS")
+    ),
+    dialysis = factor(
+      case_when(
+        CAN_DIAL == 1 ~ "No dialysis",
+        CAN_DIAL %in% c(2, 3, 4, 5) ~ "Dialysis",
+        TRUE ~ "Unknown"
+      ),
+      levels = c("No dialysis",
+                 "Dialysis",
+                 "Unknown")
+    )
+  ) 
+
+var_label_list <- list(age = "Age at listing (years)",
+                       agegroup = "Age group",
+                       sex = "Sex",
+                       race = "Race",
+                       blood_type = "Blood type",
+                       CAN_BMI = "BMI, kg/m^2",
+                       bsa = "BSA",
+                       functional_status= "Functional status at listing",
+                       payor = "Insurance type",
+                       primary_diagnosis = "Primary diagnosis",
+                       rec_exception_init_ever = "Receipt of exception",
+                       rec_exception_ever = "Receipt of exception",
+                       rec_exception_init = "Receipt of initial exception",
+                       exception_start = "Time to initial exception",
+                       exception_percent = "Percentage of waitlist time spent in exception status",
+                       diabetes = "Diabetes",
+                       cva = "CVA",
+                       smoking = "Smoking",
+                       aicd = "AICD",
+                       init_status = "Status at listing",
+                       CAN_PULM_ART_SYST = "PA systolic, mm Hg",
+                       CAN_PULM_ART_DIAST = "PA diastolic, mm Hg",
+                       CAN_PCW_MEAN = "PCWP, mm Hg",
+                       cardiac_index = "Cardicac index, L/min per m^2",
+                       CAN_IV_INOTROP = "Inotrope at listing",
+                       CAN_IABP = "IABP at listing",
+                       CAN_ECMO = "ECMO at listing",
+                       mcsd = "MCSD at listing",
+                       lvad = "Durable LVAD",
+                       other_mcs = "Other MCS",
+                       no_mcs = "No MCS",
+                       CAN_MOST_RECENT_CREAT = "Serum creatinine",
+                       dialysis = "Dialysis"
+                       )
+
+labelled::var_label(fortable1) <- var_label_list
+
+fortable1 %>%
+  select(
+    # rec_exception_ever,
+    # rec_exception_init,
+    rec_exception_init_ever,
+    age,
+    sex,
+    race,
+    payor,
+    CAN_BMI,
+    init_status,
+    functional_status,
+    primary_diagnosis,
+    diabetes,
+    cva,
+    CAN_IABP,
+    CAN_ECMO,
+    lvad,
+    other_mcs,
+    no_mcs,
+    exception_start,
+    exception_percent
+  ) %>%
+  tbl_summary(by = rec_exception_init_ever,
+              missing = "no",
+              label = list(sex ~ "Female"),
+              value = list(sex ~ "Female",
+                           diabetes ~ "Diabetes",
+                           cva ~ "CVA",
+                           lvad ~ "Durable LVAD",
+                           other_mcs ~ "Other MCS",
+                           no_mcs ~ "No MCS")) %>%
+  add_p(test.args = all_tests("fisher.test") ~ list(workspace=2e7)) %>%
+  add_overall() %>%
+  as_gt() %>%
+  gt::gtsave(
+    filename = "table1.png"
+  )
+
+fortable1 %>%
+  select(
+    rec_exception_init,
+    age,
+    sex,
+    race,
+    payor,
+    CAN_BMI,
+    init_status
+  ) %>%
+  tbl_summary(by = rec_exception_init,
+              missing = "no",
+              label = list(sex ~ "Female"),
+              value = list(sex ~ "Female")
+              ) %>%
+  add_p(test.args = all_tests("fisher.test") ~ list(workspace=2e7)) %>%
+  add_overall() %>%
+  as_gt() %>%
+  gt::gtsave(
+  filename = "table1_short1.png"
+  )
+
+fortable1 %>%
+  select(
+    rec_exception_init,
+    functional_status,
+    primary_diagnosis,
+    diabetes,
+    cva,
+    CAN_IABP,
+    CAN_ECMO,
+    lvad,
+    other_mcs,
+    no_mcs
+  ) %>%
+  tbl_summary(by = rec_exception_init,
+              missing = "no",
+              value = list(diabetes ~ "Diabetes",
+                           cva ~ "CVA",
+                           lvad ~ "Durable LVAD",
+                           other_mcs ~ "Other MCS",
+                           no_mcs ~ "No MCS")
+              ) %>%
+  add_p(test.args = all_tests("fisher.test") ~ list(workspace=2e7)) %>%
+  add_overall() %>%
+  as_gt() %>%
+  gt::gtsave(
+    filename = "table1_short2.png"
+  )
+```
