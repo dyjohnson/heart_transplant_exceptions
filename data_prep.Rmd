@@ -19,7 +19,6 @@ library(knitr)
 library(tidyverse)
 library(lubridate)
 library(haven)
-library(rmdformats)
 
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
@@ -28,58 +27,118 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 ## Read in Standard Scientific Registry of Transplant Recipients (SRTR) SAF files
 ```{r data_in}
-# stathist_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/stathist_thor.sas7bdat")
-# cand_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/cand_thor.sas7bdat")
-# JustFormHR <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/SupplementalData2206/ThoracicRegistration/JustFormHR.sas7bdat")
+cand_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/cand_thor.sas7bdat")
+JustFormHR <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/SupplementalData2206/ThoracicRegistration/JustFormHR.sas7bdat")
 load("C:/Users/dyjohnson/Box/Heart Data Pipeline/RData files/full_list_pubsaf2206.RData")
 ```
 
 ## Fix transplant center
 ```{r CAN_LISTING_CTR_ID}
-# full_list <- full_list %>%
-#   select(-CAN_LISTING_CTR_ID) %>%
-#   left_join(cand_thor %>%
-#               select(PX_ID, CAN_LISTING_CTR_ID),
-#             by = "PX_ID")
+full_list <- full_list %>%
+  select(-CAN_LISTING_CTR_ID) %>%
+  left_join(cand_thor %>%
+              select(PX_ID, CAN_LISTING_CTR_ID),
+            by = "PX_ID")
 ```
 
 ## Add number of candidates per listing center per year 
 ```{r can_listing_ctr_count}
-# cand_thor <- cand_thor %>%
-#   group_by(CAN_LISTING_CTR_ID, year(CAN_LISTING_DT)) %>%
-#   mutate(can_listing_ctr_count = n()) %>%
-#   ungroup()
-# 
-# full_list <- full_list  %>%
-#   left_join(cand_thor %>%
-#               select(PX_ID, can_listing_ctr_count),
-#             by = "PX_ID")
+cand_thor <- cand_thor %>%
+  group_by(CAN_LISTING_CTR_ID, year(CAN_LISTING_DT)) %>%
+  mutate(can_listing_ctr_count = n()) %>%
+  ungroup()
+
+full_list <- full_list  %>%
+  left_join(cand_thor %>%
+              select(PX_ID, can_listing_ctr_count),
+            by = "PX_ID")
 ```
 
 ## Add application variables from JustFormHR
 ```{r JustFormHR_vars}
-# full_list <- full_list  %>%
-#   left_join(JustFormHR %>%
-#               select(JustId, FormEffectiveDt, FormExpirationDt, ApplicationStatus, ApplicationStatus_descrip),
-#             by = "JustId")
+full_list <- full_list  %>%
+  left_join(JustFormHR %>%
+              select(JustId, FormEffectiveDt, FormExpirationDt, ApplicationStatus),
+            by = "JustId")
 ```
 
 ## Filter events needed
 ```{r filter_data}
-# full_list <- full_list %>%
-#   filter(
-#     grepl(
-#       "CAN_LISTING_DT|PERS_OPTN_DEATH_DT|PERS_OPTN_DEATH_DT|PERS_RESTRICT_DEATH_DT|CAN_REM_DT|CANHX_BEGIN_DT|REC_TX_DT|ChangeDt",
-#       unique_event
-#     )
-#   )
+full_list <- full_list %>%
+  filter(
+    grepl(
+      "CAN_LISTING_DT|PERS_OPTN_DEATH_DT|PERS_OPTN_DEATH_DT|PERS_RESTRICT_DEATH_DT|CAN_REM_DT|CANHX_BEGIN_DT|REC_TX_DT|ChangeDt",
+      unique_event
+    )
+  )
+```
+
+# Extract listing, removal, and transplant dates
+``` {r CAN_LISTING_DT}
+full_list <- full_list %>%
+  mutate(
+    CAN_LISTING_DT = case_when(grepl("CAN_LISTING_DT", unique_event) ~ unique_date)
+  ) %>%
+  group_by(PX_ID) %>%
+  fill(CAN_LISTING_DT, .direction = "downup") %>%
+  ungroup()
+```
+
+## Save point 1
+```{r}
+save1 <- full_list
+```
+
+## Select candidates
+```{r select_candidates}
+full_list <- full_list %>%
+  group_by(PX_ID) %>%
+  filter(
+    CAN_AGE_IN_MONTHS_AT_LISTING >= 216 &
+      CAN_LISTING_DT >= as.Date("2018-10-18") &
+      CAN_LISTING_DT <= as.Date("2021-12-01")
+  ) %>%
+  ungroup()
+```
+
+## Select variables
+``` {r select_variables}
+full_list <- full_list %>%
+  select(
+    # cand_thor variables
+    PX_ID,
+    CAN_AGE_IN_MONTHS_AT_LISTING,
+    CAN_LISTING_CTR_ID,
+    CAN_LISTING_DT,
+    CAN_INIT_STAT,
+    CAN_REM_CD,
+    CANHX_STAT_CD,
+    WL_ORG,
+    
+    # JustFormHR variables
+    JustId,
+    ApplicationStatus,
+    Exception,
+    FormEffectiveDt, 
+    FormExpirationDt,
+    RequestedCandStatCd,
+    
+    # heart_data_pipeline variables
+    unique_event,
+    unique_date,
+    t_start,
+    t_stop,
+    
+    # New variables
+    can_listing_ctr_count
+  )
 ```
 
 ## Save the filtered data
 ```{r save_filtered_data}
-# setwd("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP")
-# 
-# save(full_list, file = "full_list_filtered.RData")
+setwd("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP")
+
+save(full_list, file = "full_list_filtered.RData")
 ```
 
 # Data management
@@ -169,7 +228,7 @@ full_list <- full_list %>%
 full_list <- full_list %>%
   mutate(
     across(
-      c(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, ApplicationStatus, ApplicationStatus_descrip, Exception),
+      c(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, ApplicationStatus, Exception),
       ~ case_when(Exception == 1 & ApplicationStatus %in% c(8, 10, 12, 13, 14, 16, 19, 27) ~ .)
     )
   )
@@ -177,10 +236,10 @@ full_list <- full_list %>%
 # Fill application data from JustFormHR through exception period
 full_list <- full_list %>% 
   group_by(PX_ID) %>%
-  fill(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, Exception, ApplicationStatus, ApplicationStatus_descrip, .direction = "down") %>%
+  fill(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, Exception, ApplicationStatus, .direction = "down") %>%
   mutate(
     across(
-      c(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, Exception, ApplicationStatus, ApplicationStatus_descrip),
+      c(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, Exception, ApplicationStatus),
       ~ case_when(unique_date <= FormExpirationDt ~ .)
     )
   ) %>%
@@ -244,6 +303,11 @@ for (i in 2:nrow(full_list)) {
 
 full_list <- full_list %>% 
   relocate(t_start, t_stop, .after = unique_date)
+```
+
+## Save point 2
+```{r}
+save2 <- full_list
 ```
 
 ## Add length of statuses
@@ -357,18 +421,16 @@ full_list <- full_list %>%
 
 ## Add removal date to account for censoring, death, and transplant
 ```{r final_removal_dt}
-# Extract listing, removal, and transplant dates
+# Extract removal, and transplant dates
 full_list <- full_list %>%
   mutate(
-    CAN_LISTING_DT = case_when(grepl("CAN_LISTING_DT", unique_event) ~ unique_date),
     CAN_REM_DT = case_when(grepl("CAN_REM_DT", unique_event) ~ unique_date),
     REC_TX_DT = case_when(grepl("REC_TX_DT", unique_event) ~ unique_date)
   ) %>%
   group_by(PX_ID) %>%
-  fill(CAN_LISTING_DT, CAN_REM_DT, REC_TX_DT, .direction = "downup") %>%
+  fill(CAN_REM_DT, REC_TX_DT, .direction = "downup") %>%
   ungroup()
 
-# Create a new variable for the removal date to account for censoring, death, and transplant
 full_list <- full_list %>%
   group_by(PX_ID) %>%
   mutate(
@@ -415,66 +477,8 @@ full_list <- full_list %>%
 rm(active)
 ```
 
-# Select variables
-``` {r select_variables}
-full_list <- full_list %>%
-  select(
-    # cand_thor variables
-    PX_ID,
-    CAN_AGE_IN_MONTHS_AT_LISTING,
-    CAN_LISTING_CTR_ID,
-    CAN_LISTING_DT,
-    CAN_INIT_STAT,
-    CANHX_STAT_CD,
-    REC_TX_DT,
-    WL_ORG,
-    
-    # JustFormHR variables
-    JustId,
-    ApplicationStatus,
-    Exception,
-    RequestedCandStatCd,
-    
-    # heart_data_pipeline variables
-    unique_event,
-    unique_date,
-    t_start,
-    t_stop,
-    
-    # New variables
-    can_listing_ctr_count,
-    on_waitlist,
-    death,
-    can_stat_active,
-    can_stat_min,
-    rec_exception,
-    rec_exception_ever,
-    rec_exception_init,
-    rec_exception_init_ever,
-    stat_start,
-    stat_stop,
-    stat_length,
-    exception_start,
-    exception_stop,
-    exception_length,
-    removal_cause,
-    final_removal_dt,
-    survival_time,
-    active_time
-  )
-```
-
-# Select patients
-```{r select_patients}
-full_list <- full_list %>%
-  group_by(PX_ID) %>%
-  filter(
-    CAN_AGE_IN_MONTHS_AT_LISTING >= 216 &
-      CAN_LISTING_DT >= as.Date("2018-10-18") &
-      CAN_LISTING_DT <= as.Date("2021-12-01")
-  ) %>%
-  ungroup()
-
+# Apply exclusion criteria
+``` {r exclusions}
 # Save data for CONSORT diagram before applying exclusion criteria
 setwd("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP")
 
@@ -560,8 +564,7 @@ full_list <- full_list %>%
   relocate(unique_event, unique_date_start, .before = unique_date_stop) %>%
   relocate(t_start, .before = t_stop) %>% 
   relocate(exception_start, .before = exception_stop) %>%
-  relocate(stat_start, .before = stat_stop) %>%
-  arrange(PX_ID, unique_date_start)
+  relocate(stat_start, .before = stat_stop)
 
 # PX_ID = 1428545
 ```
