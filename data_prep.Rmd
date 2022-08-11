@@ -20,7 +20,6 @@ library(tidyverse)
 library(lubridate)
 library(haven)
 library(rmdformats)
-library(consort)
 
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
@@ -29,58 +28,58 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 ## Read in Standard Scientific Registry of Transplant Recipients (SRTR) SAF files
 ```{r data_in}
-stathist_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/stathist_thor.sas7bdat")
-cand_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/cand_thor.sas7bdat")
-JustFormHR <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/SupplementalData2206/ThoracicRegistration/JustFormHR.sas7bdat")
+# stathist_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/stathist_thor.sas7bdat")
+# cand_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/cand_thor.sas7bdat")
+# JustFormHR <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/SupplementalData2206/ThoracicRegistration/JustFormHR.sas7bdat")
 load("C:/Users/dyjohnson/Box/Heart Data Pipeline/RData files/full_list_pubsaf2206.RData")
 ```
 
 ## Fix transplant center
 ```{r CAN_LISTING_CTR_ID}
-full_list <- full_list %>%
-  select(-CAN_LISTING_CTR_ID) %>%
-  left_join(cand_thor %>%
-              select(PX_ID, CAN_LISTING_CTR_ID),
-            by = "PX_ID")
+# full_list <- full_list %>%
+#   select(-CAN_LISTING_CTR_ID) %>%
+#   left_join(cand_thor %>%
+#               select(PX_ID, CAN_LISTING_CTR_ID),
+#             by = "PX_ID")
 ```
 
 ## Add number of candidates per listing center per year 
 ```{r can_listing_ctr_count}
-cand_thor <- cand_thor %>%
-  group_by(CAN_LISTING_CTR_ID, year(CAN_LISTING_DT)) %>%
-  mutate(can_listing_ctr_count = n()) %>%
-  ungroup()
-
-full_list <- full_list  %>%
-  left_join(cand_thor %>%
-              select(PX_ID, can_listing_ctr_count),
-            by = "PX_ID")
+# cand_thor <- cand_thor %>%
+#   group_by(CAN_LISTING_CTR_ID, year(CAN_LISTING_DT)) %>%
+#   mutate(can_listing_ctr_count = n()) %>%
+#   ungroup()
+# 
+# full_list <- full_list  %>%
+#   left_join(cand_thor %>%
+#               select(PX_ID, can_listing_ctr_count),
+#             by = "PX_ID")
 ```
 
 ## Add application variables from JustFormHR
 ```{r JustFormHR_vars}
-full_list <- full_list  %>%
-  left_join(JustFormHR %>%
-              select(JustId, FormEffectiveDt, FormExpirationDt, ApplicationStatus, ApplicationStatus_descrip),
-            by = "JustId")
+# full_list <- full_list  %>%
+#   left_join(JustFormHR %>%
+#               select(JustId, FormEffectiveDt, FormExpirationDt, ApplicationStatus, ApplicationStatus_descrip),
+#             by = "JustId")
 ```
 
 ## Filter events needed
 ```{r filter_data}
-full_list <- full_list %>%
-  filter(
-    grepl(
-      "CAN_LISTING_DT|PERS_OPTN_DEATH_DT|PERS_OPTN_DEATH_DT|PERS_RESTRICT_DEATH_DT|CAN_REM_DT|CANHX_BEGIN_DT|REC_TX_DT|ChangeDt",
-      unique_event
-    )
-  )
+# full_list <- full_list %>%
+#   filter(
+#     grepl(
+#       "CAN_LISTING_DT|PERS_OPTN_DEATH_DT|PERS_OPTN_DEATH_DT|PERS_RESTRICT_DEATH_DT|CAN_REM_DT|CANHX_BEGIN_DT|REC_TX_DT|ChangeDt",
+#       unique_event
+#     )
+#   )
 ```
 
 ## Save the filtered data
 ```{r save_filtered_data}
-setwd("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP")
-
-save(full_list, file = "full_list_filtered.RData")
+# setwd("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP")
+# 
+# save(full_list, file = "full_list_filtered.RData")
 ```
 
 # Data management
@@ -88,6 +87,53 @@ save(full_list, file = "full_list_filtered.RData")
 ## Load filtered data
 ```{r load_filtered_data}
 load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_filtered.RData")
+```
+
+## Add CAN_LAST_ACT_STAT_DT as an event
+``` {r CAN_LAST_ACT_STAT_DT}
+# Create a dataframe with CAN_LAST_ACT_STAT_DT
+last_active <- cand_thor %>%
+  filter(!is.na(CAN_LAST_ACT_STAT_DT) & PX_ID %in% full_list$PX_ID) %>%
+  mutate(unique_date = floor_date(CAN_LAST_ACT_STAT_DT, unit = "days"), 
+         unique_event = "CAN_LAST_ACT_STAT_DT") %>%
+  select(PX_ID, unique_date, unique_event)
+
+# Merge CAN_LAST_ACT_STAT_DT dataframe with full_list
+full_list <- full_list %>%
+  bind_rows(last_active) %>%
+  arrange(PX_ID, unique_date)
+
+rm(last_active)
+
+# If CAN_LAST_ACT_STAT_DT is on the same date as another event, merge the rows
+duplicates <- full_list %>% 
+  group_by(PX_ID, unique_date) %>% 
+  filter(n() > 1) %>%
+  mutate(unique_event = str_c(unique_event, collapse = ",")) %>%
+  summarise(
+    across(
+      c(everything()),
+      ~last(na.omit(.))
+    )
+  ) %>%
+  ungroup()
+
+uniques <- full_list %>%
+  group_by(PX_ID, unique_date) %>% 
+  filter(n() <= 1) %>%
+  ungroup()
+
+full_list <- uniques %>%
+  bind_rows(duplicates) %>%
+  arrange(PX_ID, unique_date)
+
+rm(uniques, duplicates)
+
+# If CAN_LAST_ACT_STAT_DT is on a new date, fill in the data from the previous row
+full_list <- full_list %>%
+  group_by(PX_ID) %>%
+  fill(everything(), .direction = "down") %>%
+  ungroup()
 ```
 
 ## Add a copy of CANHX_STAT_CD where a candidate's most recent status is carried through temporarily inactive periods
@@ -101,10 +147,20 @@ full_list <- full_list %>%
   ungroup()
 ```
 
-## Drop inactive rows for patients who list as inactive
+## Add a variable for a candidate's minimum status to identify permanently inactive candidates and candidates listed using the previous classification system
+``` {r can_stat_min}
+full_list <- full_list %>%
+  group_by(PX_ID) %>%
+  mutate(
+    can_stat_min = min(CANHX_STAT_CD)
+  ) %>%
+  ungroup()
+```
+
+## Drop inactive rows for patients who list as inactive and become active later
 ``` {r drop_inactive}
 full_list <- full_list %>% 
-  filter(!is.na(can_stat_active))
+  filter(!is.na(can_stat_active) | can_stat_min %in% c(1999, 2999))
 ```
 
 ## Add a time-dependent variable indicating whether a candidate is receiving a status exception
@@ -144,7 +200,7 @@ full_list <- full_list %>%
 # rec_exception = 1 when a candidate's status matches their approved exception status and the date is before the expiration date
 full_list <- full_list %>%
   mutate(
-    rec_exception = if_else(can_stat_active == status_approved & unique_date <= FormExpirationDt, 1, 0)
+    rec_exception = if_else(can_stat_active == status_approved & unique_date <= FormExpirationDt, 1, 0, missing = 0)
   )
 ```
 
@@ -156,68 +212,6 @@ full_list <- full_list %>%
   fill(rec_exception_ever, .direction = "downup") %>%
   ungroup() %>%
   mutate(rec_exception_ever = replace_na(rec_exception_ever, 0))
-```
-
-## Add FormExpirationDt as an event for exception forms that expire
-``` {r FormExpirationDt}
-# expirations <- full_list %>%
-#   filter(rec_exception_ever == 1) %>%
-#   group_by(PX_ID) %>%
-#   mutate(rec_exception_next = lead(rec_exception),
-#          exception_change = case_when(
-#              rec_exception != rec_exception_next ~ 1,
-#            TRUE ~ 0,
-#          ),
-#          last_dt_temp = max(unique_date)
-#          ) %>%
-#   ungroup() %>%
-#   filter(exception_change == 1) %>%
-#   mutate(unique_date = FormExpirationDt, 
-#          unique_event = "FormExpirationDt",
-#          rec_exception = 0) %>%
-#   filter(unique_date <= last_dt_temp) %>%
-#   select(-c(rec_exception_next, exception_change, last_dt_temp)) %>%
-#   unique()
-# 
-# full_list <- expirations %>%
-#   bind_rows(full_list) %>%
-#   arrange(PX_ID, unique_date) %>%
-#   group_by(PX_ID) %>%
-#   fill(everything(), .direction = "down") %>%
-#   filter(unique_event != "FormExpirationDt" | unique_date >= FormExpirationDt) %>% 
-#   mutate(
-#     across(
-#       c(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, Exception, ApplicationStatus, ApplicationStatus_descrip),
-#       ~ case_when(unique_event == "FormExpirationDt" | unique_date < FormExpirationDt ~ .)
-#     )
-#   )
-# 
-# # If FormExpirationDt is on the same date as another event for a patient, merge the rows
-# duplicates <- full_list %>% 
-#   group_by(PX_ID, unique_date) %>% 
-#   filter(n() > 1) %>%
-#   mutate(unique_event = str_c(unique_event, collapse = ",")) %>%
-#   summarise(
-#     across(
-#       c(everything(), -rec_exception),
-#       ~last(na.omit(.))
-#     ),
-#     rec_exception = max(rec_exception)
-#   ) %>%
-#   ungroup()
-# 
-# uniques <- full_list %>%
-#   group_by(PX_ID, unique_date) %>% 
-#   filter(n() <= 1) %>%
-#   ungroup()
-# 
-# full_list <- uniques %>%
-#   bind_rows(duplicates) %>%
-#   arrange(PX_ID, unique_date)
-# 
-# rm(uniques, duplicates)
-# 
-# full_list %>% filter(rec_exception_ever == 1) %>% select(PX_ID, unique_event, unique_date, CANHX_STAT_CD, RequestedCandStatCd, rec_exception, FormExpirationDt, JustId) %>% View()
 ```
 
 ## Recalculate t_start and t_stop
@@ -340,7 +334,6 @@ full_list <- full_list %>%
 ## Add death
 ```{r death}
 # Several patients may be removed from the waitlist without getting a transplant but still die. This variable death accounts for that. Basically, if a patient has a removal code for anything other than transplantation and has a death_dt on file, then they are coded as having died.
-# Check deaths
 full_list <- full_list %>%
   mutate(death = case_when(
     unique_date >= death_dt &
@@ -387,6 +380,12 @@ full_list <- full_list %>%
     ))
   ) %>%
   ungroup()
+```
+
+## Add variable to indicate if a candidate is on the waitlist
+``` {r on_waitlist}
+full_list <- full_list %>%
+  mutate(on_waitlist = if_else(unique_date < final_removal_dt, 1, 0))
 ```
 
 ## Add pre-transplant survival time
@@ -444,12 +443,17 @@ full_list <- full_list %>%
     
     # New variables
     can_listing_ctr_count,
+    on_waitlist,
     death,
     can_stat_active,
+    can_stat_min,
     rec_exception,
     rec_exception_ever,
     rec_exception_init,
     rec_exception_init_ever,
+    stat_start,
+    stat_stop,
+    stat_length,
     exception_start,
     exception_stop,
     exception_length,
@@ -480,8 +484,8 @@ save(full_list, file = "full_list_consort.RData")
 full_list <- full_list %>%
   group_by(PX_ID) %>%
   filter(
-    min(as.numeric(as.character(CANHX_STAT_CD))) != 2999 &
-      min(as.numeric(as.character(CANHX_STAT_CD))) %in% c(2110, 2120, 2130, 2140, 2150, 2160, 2999) &
+    can_stat_min %in% c(2110, 2120, 2130, 2140, 2150, 2160, 2999) &
+      can_stat_min != 2999 &
       WL_ORG == "HR" &
       can_listing_ctr_count >= 10 &
       active_time >= 14
@@ -510,7 +514,7 @@ full_list <- full_list %>%
   ungroup()
 
 # Merge the data in the last two rows for each patient
-full_list_head <- full_list_for_funnel %>%
+full_list_head <- full_list %>%
   group_by(PX_ID) %>%
   slice_head(n = -2) %>%
   ungroup()
@@ -521,52 +525,28 @@ full_list_tail <- full_list %>%
   mutate(unique_event = str_c(unique_event, collapse = ",")) %>%
   summarise(
     across(
-      c(everything(),-unique_date_start,-t_start),
+      c(everything(),-unique_date_start,-t_start,-on_waitlist),
       ~last(na.omit(.))
     ),
     unique_date_start = min(unique_date_start, na.rm = TRUE),
-    t_start = min(t_start, na.rm = TRUE)
+    t_start = min(t_start, na.rm = TRUE),
+    on_waitlist = first(on_waitlist)
   ) %>%
   ungroup() %>%
   relocate(unique_event, unique_date_start, .before = unique_date_stop) %>%
   relocate(t_start, .before = t_stop)
 
-full_list_temp3 <- full_list_head %>%
+full_list <- full_list_head %>%
   bind_rows(full_list_tail) %>%
   arrange(PX_ID, unique_date_start)
 
 rm(full_list_head, full_list_tail)
 ```
 
-# Aggregate rows without changes in status or exception
+# Aggregate rows without changes in status, exception, or active status on waitlist
 ``` {r aggregate}
-full_list_temp <- full_list_for_funnel %>%
-  rename(unique_date_start = unique_date) %>% 
-  arrange(PX_ID, unique_date_start) %>% 
-  group_by(PX_ID) %>% 
-  mutate(unique_date_stop = lead(unique_date_start)) %>%
-  relocate(unique_date_stop, .after = unique_date_start) %>%
-  ungroup()
-
-full_list_temp3 <- full_list_temp3 %>%
-  group_by(PX_ID) %>%
-  mutate(
-    can_stat_active_prev = lag(can_stat_active),
-    can_stat_active_next = lead(can_stat_active),
-    stat_start = case_when(
-      can_stat_active != can_stat_active_prev | is.na(can_stat_active_prev) ~ t_start
-    ),
-    stat_stop = case_when(
-      can_stat_active != can_stat_active_next | is.na(can_stat_active_next) ~ t_stop
-    )
-  ) %>%
-  fill(stat_start, .direction = "down") %>%
-  fill(stat_stop, .direction = "up") %>%
-  mutate(stat_length = stat_stop - stat_start) %>% 
-  select(-c(can_stat_active_prev, can_stat_active_next))
-
-full_list_temp3 <- full_list_temp3 %>%
-  group_by(PX_ID, exception_start, stat_start) %>%
+full_list <- full_list %>%
+  group_by(PX_ID, exception_start, stat_start, on_waitlist) %>%
   mutate(unique_event = str_c(unique_event, collapse = ",")) %>%
   summarise(
     across(
@@ -583,25 +563,7 @@ full_list_temp3 <- full_list_temp3 %>%
   relocate(stat_start, .before = stat_stop) %>%
   arrange(PX_ID, unique_date_start)
 
-full_list_temp2 <- full_list_temp2 %>%
-  group_by(PX_ID) %>%
-  mutate(count2 = n()) %>%
-  ungroup()
-
-full_list_temp3 <- full_list_temp3 %>%
-  group_by(PX_ID) %>%
-  mutate(count3 = n()) %>%
-  ungroup()
-
-counts <- full_list_temp3 %>%
-  left_join(
-    full_list_temp2 %>% select(PX_ID, count2), by = "PX_ID"
-  )
-
-diff <- counts %>% filter(count2 != count3) %>% select(PX_ID, count2, count3)
-
-full_list_temp2 %>% filter(PX_ID %in% diff$PX_ID) %>% View()
-
+# PX_ID = 1428545
 ```
 
 # Save final data
