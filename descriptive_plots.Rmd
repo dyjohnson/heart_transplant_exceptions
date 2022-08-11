@@ -1,0 +1,198 @@
+---
+title: "descriptive_plots"
+author: "Daniel Johnson"
+date: "2022-08-11"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
+  html_notebook:
+    theme: journal
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+---
+# Setup
+
+```{r setup, include=FALSE}
+library(knitr)
+library(tidyverse)
+
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Data sources
+```{r data_in}
+load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
+```
+
+# Descriptive plots
+
+## Exception frequency by status
+``` {r exceptions_by_status}
+## Create status_approved2, which is the same as status_approved but doesn't fill forward
+full_list <- full_list %>%
+  mutate(status_approved2 = case_when(
+    Exception == 1 &
+      ApplicationStatus %in% c(8, 10, 12, 13, 14, 16, 19, 27) &
+      RequestedCandStatCd == 2110 ~ "Status 1",
+    Exception == 1 &
+      ApplicationStatus %in% c(8, 10, 12, 13, 14, 16, 19, 27) &
+      RequestedCandStatCd == 2120 ~ "Status 2",
+    Exception == 1 &
+      ApplicationStatus %in% c(8, 10, 12, 13, 14, 16, 19, 27) &
+      RequestedCandStatCd == 2130 ~ "Status 3",
+    Exception == 1 &
+      ApplicationStatus %in% c(8, 10, 12, 13, 14, 16, 19, 27) &
+      RequestedCandStatCd == 2140 ~ "Status 4",
+    Exception == 1 &
+      ApplicationStatus %in% c(8, 10, 12, 13, 14, 16, 19, 27) &
+      RequestedCandStatCd == 2150 ~ "Status 5",
+    Exception == 1 &
+      ApplicationStatus %in% c(8, 10, 12, 13, 14, 16, 19, 27) &
+      RequestedCandStatCd == 2160 ~ "Status 6",
+    ),
+    status_approved2 = factor(status_approved2, levels = c(
+          "Status 1",
+          "Status 2",
+          "Status 3",
+          "Status 4",
+          "Status 5",
+          "Status 6"))
+  )
+
+d <- full_list %>%
+  filter(
+    !is.na(status_approved2) &
+      status_approved2 %in% c("Status 1", "Status 2", "Status 3", "Status 4")
+  )
+
+# Counts
+ggplot(d, aes(status_approved2)) + 
+  geom_bar() +
+  labs(x = "Status Exception Approved", y = "Count")
+
+ggsave("status_approved.png", width = 5, height = 5)
+```
+
+## Exception proportion by status
+``` {r status_approved_prop}
+status_approved_prop <- full_list %>%
+  filter(can_stat_active %in% c(2110, 2120, 2130, 2140)) %>%
+  select(PX_ID,
+         t_start,
+         t_stop,
+         can_stat_active,
+         rec_exception) %>%
+  mutate(
+    can_stat_active = case_when(
+      can_stat_active == 2110 ~ "Status 1",
+      can_stat_active == 2120 ~ "Status 2",
+      can_stat_active == 2130 ~ "Status 3",
+      can_stat_active == 2140 ~ "Status 4",
+    )
+  ) %>%
+  group_by(can_stat_active) %>%
+  summarise(proportion_ex = mean(rec_exception) * 100) %>%
+  ungroup()
+
+ggplot(status_approved_prop, aes(can_stat_active, proportion_ex)) + 
+  geom_col() +
+  labs(x = "Status Exception Approved", y = "Proportion of Candidates with Exceptions")
+
+ggsave("status_approved_prop.png", width = 5, height = 5)
+```
+
+## Stacked bar chart
+``` {r status_stack}
+# Select only rows with changes in status or exception status
+for_stack <- full_list %>%
+  group_by(PX_ID) %>%
+  mutate(
+    rec_exception_status = factor(
+      case_when(
+        can_stat_active == 2110 &
+          rec_exception == 0 ~ "Status 1 no exception",
+        can_stat_active == 2110 &
+          rec_exception == 1 ~ "Status 1 exception",
+        can_stat_active == 2120 &
+          rec_exception == 0 ~ "Status 2 no exception",
+        can_stat_active == 2120 &
+          rec_exception == 1 ~ "Status 2 exception",
+        can_stat_active == 2130 &
+          rec_exception == 0 ~ "Status 3 no exception",
+        can_stat_active == 2130 &
+          rec_exception == 1 ~ "Status 3 exception",
+        can_stat_active == 2140 &
+          rec_exception == 0 ~ "Status 4 no exception",
+        can_stat_active == 2140 &
+          rec_exception == 1 ~ "Status 4 exception",
+        can_stat_active == 2150 ~ "Status 5",
+        can_stat_active == 2160 ~ "Status 6"
+      )
+    ),
+    rec_exception_status_prev = lag(rec_exception_status),
+    rec_exception_status_change = case_when(rec_exception_status != rec_exception_status_prev | is.na(rec_exception_status_prev) ~ 1,
+                                            TRUE ~ 0),
+    can_stat_active = factor(
+      case_when(
+        can_stat_active == 2110 ~ "Status 1",
+        can_stat_active == 2120 ~ "Status 2",
+        can_stat_active == 2130 ~ "Status 3",
+        can_stat_active == 2140 ~ "Status 4",
+        can_stat_active == 2150 ~ "Status 5",
+        can_stat_active == 2160 ~ "Status 6"
+      ),
+      levels = c(
+        "Status 1",
+        "Status 2",
+        "Status 3",
+        "Status 4",
+        "Status 5",
+        "Status 6"
+      )
+    ),
+    rec_exception = factor(
+      case_when(
+        rec_exception == 1 ~ "Exception",
+        TRUE ~ "No exception"), 
+      levels = c("Exception", "No exception"))
+  ) %>%
+  filter(rec_exception_status_change == 1) %>%
+  select(-c(rec_exception_status_prev, rec_exception_status_change))
+  
+for_stack %>% select(PX_ID, unique_date_start, can_stat_active, rec_exception, rec_exception_status) %>% View()
+
+ggplot(for_stack, aes(x = can_stat_active, fill = rec_exception)) + 
+  geom_bar() + 
+  labs(x = "Status", y = "Number of Candidates", fill = "")
+
+ggsave("status_stack.png", width = 10, height = 5)
+```
+
+# Chart of exceptions by time of exception
+``` {r exception_by_time}
+ggplot(d, aes(status_approved2, t_start)) +
+  geom_boxplot(outlier.shape = NA) +
+  coord_cartesian(ylim = quantile(d$t_start, c(0.1, 0.9))) +
+  labs(x = "Status Exception Approved", y = "Day Exception Approved")
+
+ggsave("exception_by_time.png", width = 5, height = 5)
+```
+
+# Bar chart of exceptions by duration of exceptions
+``` {r exception_by_length}
+e <- full_list %>%
+  filter(
+    rec_exception == 1
+  ) %>%
+  select(PX_ID, exception_start, exception_stop, exception_length) %>%
+  mutate(exception_length_mo = exception_length/30.437) %>%
+  unique()
+
+ggplot(e, aes(exception_length_mo)) +
+  geom_histogram(binwidth = 1) +
+  labs(x = "Status Exception Length (months)", y = "Count")
+
+ggsave("exception_by_length.png")
+```

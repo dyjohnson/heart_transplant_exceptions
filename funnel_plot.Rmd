@@ -1,0 +1,350 @@
+---
+title: "funnel_plot"
+author: "Daniel Johnson"
+date: "2022-08-11"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
+  html_notebook:
+    theme: journal
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+---
+# Setup
+
+```{r setup, include=FALSE}
+library(knitr)
+library(tidyverse)
+
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Data sources
+```{r data_in}
+load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_for_funnel.RData")
+cand_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/cand_thor.sas7bdat")
+```
+
+# Patient funnel plot
+
+```{r funnel_plot}
+# Graph proportions of exceptions over time
+full_list_for_funnel <- full_list_for_funnel %>%
+  filter(
+    CAN_AGE_IN_MONTHS_AT_LISTING >= 216 &
+      CAN_LISTING_DT >= as.Date("2018-10-18") &
+      CAN_LISTING_DT <= as.Date("2021-12-01") &
+      min(as.numeric(as.character(CANHX_STAT_CD))) != 2999 &
+      CAN_INIT_STAT %in% c(2110, 2120, 2130, 2140, 2150, 2160, 2999) &
+      WL_ORG == "HR" &
+      can_listing_ctr_count >= 10
+  )
+
+full_list_for_funnel <- left_join(full_list_for_funnel, cand_thor %>% select(PX_ID, CAN_SOURCE), by = "PX_ID")
+
+full_list_for_funnel <- full_list_for_funnel %>%
+  group_by(PX_ID) %>%
+  mutate(big_stat = factor(
+    case_when(
+      death == 1 & rec_exception == 1 ~ "dead_w_exception",
+      death == 1 & rec_exception == 0 ~ "dead_wo_exception",
+      unique_date >= REC_TX_DT &
+        rec_exception == 1 ~ "transplant_w_exception",
+      unique_date >= REC_TX_DT &
+        rec_exception == 0 ~ "transplant_wo_exception", 
+      t_start == max(t_start) &
+        CAN_SOURCE == "R" &
+        death == 0 &
+        rec_exception == 1 ~ "delisted_w_exception",
+      t_start == max(t_start) &
+        CAN_SOURCE == "R" &
+        death == 0 &
+        rec_exception == 0 ~ "delisted_wo_exception",
+      rec_exception == 1 ~ "alive_w_exception",
+      rec_exception == 0 ~ "alive_wo_exception"
+    )
+  ),
+  big_stat2 = factor(
+    case_when(
+      death == 1 & rec_exception == 1 ~ "dead_w_exception",
+      death == 1 & rec_exception == 0 ~ "dead_wo_exception",
+      unique_date >= REC_TX_DT &
+        rec_exception == 1 ~ "transplant_w_exception",
+      unique_date >= REC_TX_DT &
+        rec_exception == 0 ~ "transplant_wo_exception", 
+      t_start == max(t_start) &
+        CAN_SOURCE == "R" &
+        death == 0 &
+        rec_exception == 1 ~ "delisted_w_exception",
+      t_start == max(t_start) &
+        CAN_SOURCE == "R" &
+        death == 0 &
+        rec_exception == 0 ~ "delisted_wo_exception",
+      can_stat_active == 2110 &
+        rec_exception == 1 ~ "stat_1_w_exception",
+      can_stat_active == 2110 &
+        rec_exception == 0 ~ "stat_1_wo_exception",
+      can_stat_active == 2120 &
+        rec_exception == 1 ~ "stat_2_w_exception",
+      can_stat_active == 2120 &
+        rec_exception == 0 ~ "stat_2_wo_exception",
+      can_stat_active == 2130 &
+        rec_exception == 1 ~ "stat_3_w_exception",
+      can_stat_active == 2130 &
+        rec_exception == 0 ~ "stat_3_wo_exception",
+      can_stat_active == 2140 &
+        rec_exception == 1 ~ "stat_4_w_exception",
+      can_stat_active == 2140 &
+        rec_exception == 0 ~ "stat_4_wo_exception",
+      can_stat_active == 2150 ~ "stat_5",
+      can_stat_active == 2160 ~ "stat_6"
+    )
+  )) %>%
+  ungroup()
+
+full_list_for_funnel <- full_list_for_funnel %>%
+  select(PX_ID, t_start) %>%
+  group_by(PX_ID) %>%
+  summarise(t_start = seq(0, 100),
+            .groups = "drop") %>%
+  full_join(full_list_for_funnel %>% 
+              select(PX_ID, t_start, can_stat_active, rec_exception, big_stat, big_stat2),
+            by = c("PX_ID", "t_start"))  %>%
+  fill(everything(), .direction = "down") %>%
+  ungroup() %>%
+  filter(t_start <= 100)
+
+alive <- full_list_for_funnel %>%
+  group_by(t_start) %>%
+  count(big_stat) %>% 
+  ungroup() %>% 
+  spread(key = big_stat, value = n) %>% 
+  mutate_all(funs(replace(., is.na(.), 0))) %>% 
+  rename(time = t_start)
+  
+# Check sums
+# alive %>% mutate(sum = alive_w_exception + alive_wo_exception + delisted_w_exception + delisted_wo_exception + dead_w_exception + dead_wo_exception + transplant_w_exception + transplant_wo_exception) %>% View()
+
+status <- full_list_for_funnel %>%
+  group_by(t_start) %>%
+  count(big_stat2) %>% 
+  ungroup() %>% 
+  spread(key = big_stat2, value = n) %>% 
+  mutate_all(funs(replace(., is.na(.), 0))) %>% 
+  rename(time = t_start)
+
+# Check sums
+# status %>% mutate(sum = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception + stat_4_w_exception +stat_4_wo_exception + stat_5 + stat_6 + delisted_w_exception + delisted_wo_exception + dead_w_exception + dead_wo_exception + transplant_w_exception + transplant_wo_exception) %>% View()
+
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+
+RColorBrewer::brewer.pal(12, "Paired")
+
+population_time <- ggplot(data = alive, aes(x = time)) +
+  geom_area(
+    aes(y = alive_w_exception, fill = "Alive with exception"),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = alive_w_exception + alive_wo_exception,
+      ymin = alive_w_exception,
+      fill = "Alive without exception"
+    ),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = alive_w_exception + alive_wo_exception + transplant_w_exception,
+      ymin = alive_w_exception + alive_wo_exception,
+      fill = "Transplanted with exception"
+    ),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = alive_w_exception + alive_wo_exception + transplant_w_exception + transplant_wo_exception,
+      ymin = alive_w_exception + alive_wo_exception + transplant_w_exception,
+      fill = "Transplanted without exception"
+    ),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = alive_w_exception + alive_wo_exception + transplant_w_exception + transplant_wo_exception + delisted_w_exception,
+      ymin = alive_w_exception + alive_wo_exception + transplant_w_exception + transplant_wo_exception,
+      fill = "Delisted with exception"
+    ),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = alive_w_exception + alive_wo_exception + transplant_w_exception + transplant_wo_exception + delisted_w_exception + delisted_wo_exception,
+      ymin = alive_w_exception + alive_wo_exception + transplant_w_exception + transplant_wo_exception + delisted_w_exception,
+      fill = "Delisted without exception"
+    ),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  labs(y = "Number of Patients Alive", x = "Days Since Listing") +
+  scale_fill_manual(values = cbPalette,
+                    name = "",
+                    breaks = c("Alive with exception", "Alive without exception", "Transplanted with exception", "Transplanted without exception", "Delisted with exception", "Delisted without exception"),
+                    labels = c("Alive with exception", "Alive without exception", "Transplanted with exception", "Transplanted without exception", "Delisted with exception", "Delisted without exception")) +
+  theme_minimal() + scale_x_continuous(breaks = seq(0, 100, 20)) + scale_y_continuous(breaks = seq(0, 13000, 1000))
+
+population_time
+
+ggsave("population_time.png")
+
+stat_time <- ggplot(data = status, aes(x = time)) +
+  geom_area(
+    aes(y = stat_1_w_exception, fill = "Status 1 with exception"),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = stat_1_w_exception + stat_1_wo_exception,
+      ymin = stat_1_w_exception,
+      fill = "Status 1 without exception"
+    ),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception,
+      ymin = stat_1_w_exception + stat_1_wo_exception,
+      fill = "Status 2 with exception"
+    ),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception,
+      ymin = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception,
+      fill = "Status 2 without exception"
+    ),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception,
+      ymin = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception,
+      fill = "Status 3 with exception"
+    ),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception,
+      ymin = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception,
+      fill = "Status 3 without exception"
+    ),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception + stat_4_w_exception,
+      ymin = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception,
+      fill = "Status 4 with exception"
+    ),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception + stat_4_w_exception + stat_4_wo_exception,
+      ymin = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception + stat_4_w_exception,
+      fill = "Status 4 without exception"
+    ),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception + stat_4_w_exception + stat_4_wo_exception + stat_5,
+      ymin = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception + stat_4_w_exception + stat_4_wo_exception,
+      fill = "Status 5"
+    ),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception + stat_4_w_exception + stat_4_wo_exception + stat_5 + stat_6,
+      ymin = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception + stat_4_w_exception + stat_4_wo_exception + stat_5,
+      fill = "Status 6"
+    ),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception + stat_4_w_exception + stat_4_wo_exception + stat_5 + stat_6 + transplant_w_exception + transplant_wo_exception,
+      ymin = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception + stat_4_w_exception + stat_4_wo_exception + stat_5 + stat_6,
+      fill = "Transplanted"
+    ),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception + stat_4_w_exception + stat_4_wo_exception + stat_5 + stat_6 + transplant_w_exception + transplant_wo_exception + delisted_w_exception + delisted_wo_exception,
+      ymin = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception + stat_4_w_exception + stat_4_wo_exception + stat_5 + stat_6 + transplant_w_exception + transplant_wo_exception,
+      fill = "Delisted"
+    ),
+    colour = "black",
+    alpha = 0.75
+  ) +
+  labs(y = "Number of Patients Alive", x = "Days Since Listing") +
+  scale_fill_manual(
+    name = "",
+    values = c(
+      "Status 1 with exception" = "#A6CEE3",
+      "Status 1 without exception" = "#1F78B4",
+      "Status 2 with exception" = "#B2DF8A",
+      "Status 2 without exception" = "#33A02C",
+      "Status 3 with exception" = "#FB9A99",
+      "Status 3 without exception" = "#E31A1C",
+      "Status 4 with exception" = "#FDBF6F",
+      "Status 4 without exception" = "#FF7F00",
+      "Status 5" = "#CAB2D6",
+      "Status 6" = "#6A3D9A",
+      "Transplanted" = "#FFFF99",
+      "Delisted" = "#B15928"
+    )
+  ) +
+  theme_minimal() + scale_x_continuous(breaks = seq(0, 100, 20)) + scale_y_continuous(breaks = seq(0, 13000, 1000))
+
+temp <- c(
+      "Status 1 with exception" = "#A6CEE3",
+      "Status 1 without exception" = "#1F78B4",
+      "Status 2 with exception" = "#B2DF8A",
+      "Status 2 without exception" = "#33A02C",
+      "Status 3 with exception" = "#FB9A99",
+      "Status 3 without exception" = "#E31A1C",
+      "Status 4 with exception" = "#FDBF6F",
+      "Status 4 without exception" = "#FF7F00",
+      "Status 5" = "#CAB2D6",
+      "Status 6" = "#6A3D9A",
+      "Transplanted" = "#FFFF99",
+      "Delisted" = "#B15928"
+    )
+
+stat_time
+
+ggsave("stat_time.png")
+```
