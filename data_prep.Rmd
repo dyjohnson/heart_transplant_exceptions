@@ -1,7 +1,7 @@
 ---
 title: "data_prep"
 author: "Daniel Johnson"
-date: "08/08/2022"
+date: "2022-08-11"
 output:
   pdf_document:
     toc: yes
@@ -29,6 +29,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 ## Read in Standard Scientific Registry of Transplant Recipients (SRTR) SAF files
 ```{r data_in}
+stathist_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/stathist_thor.sas7bdat")
 cand_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/cand_thor.sas7bdat")
 JustFormHR <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/SupplementalData2206/ThoracicRegistration/JustFormHR.sas7bdat")
 load("C:/Users/dyjohnson/Box/Heart Data Pipeline/RData files/full_list_pubsaf2206.RData")
@@ -159,92 +160,64 @@ full_list <- full_list %>%
 
 ## Add FormExpirationDt as an event for exception forms that expire
 ``` {r FormExpirationDt}
-expirations <- full_list %>%
-  filter(rec_exception_ever == 1) %>%
-  group_by(PX_ID) %>%
-  mutate(rec_exception_next = lead(rec_exception),
-         exception_change = case_when(
-             rec_exception != rec_exception_next ~ 1,
-           TRUE ~ 0,
-         ),
-         last_dt_temp = max(unique_date)
-         ) %>%
-  ungroup() %>%
-  filter(exception_change == 1) %>%
-  mutate(unique_date = FormExpirationDt, 
-         unique_event = "FormExpirationDt",
-         rec_exception = 0) %>%
-  filter(unique_date <= last_dt_temp) %>%
-  select(-c(rec_exception_next, exception_change, last_dt_temp)) %>%
-  unique()
-
-full_list <- expirations %>%
-  bind_rows(full_list) %>%
-  arrange(PX_ID, unique_date) %>%
-  group_by(PX_ID) %>%
-  fill(everything(), .direction = "down") %>%
-  filter(unique_event != "FormExpirationDt" | unique_date >= FormExpirationDt) %>%  
-  #   mutate(
-  #   JustId = case_when(
-  #     unique_event == "FormExpirationDt" |
-  #       unique_date <= FormExpirationDt ~ JustId
-  #   ),
-  #   FormEffectiveDt = case_when(
-  #     unique_event == "FormExpirationDt" |
-  #       unique_date <= FormExpirationDt ~ FormEffectiveDt
-  #   ),
-  #   FormExpirationDt = case_when(
-  #     unique_event == "FormExpirationDt" |
-  #       unique_date <= FormExpirationDt ~ FormExpirationDt
-  #   ),
-  #   RequestedCandStatCd = case_when(
-  #     unique_event == "FormExpirationDt" |
-  #       unique_date <= FormExpirationDt ~ RequestedCandStatCd
-  #   ),
-  #   Exception = case_when(
-  #     unique_event == "FormExpirationDt" |
-  #       unique_date <= FormExpirationDt ~ Exception
-  #   ),
-  #   ApplicationStatus = case_when(
-  #     unique_event == "FormExpirationDt" |
-  #       unique_date <= FormExpirationDt ~ ApplicationStatus
-  #   ),
-  #   ApplicationStatus_descrip = case_when(
-  #     unique_event == "FormExpirationDt" |
-  #       unique_date <= FormExpirationDt ~ ApplicationStatus_descrip
-  #   )
-  # )
-  mutate(
-    across(
-      c(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, Exception, ApplicationStatus, ApplicationStatus_descrip),
-      ~ case_when(unique_event == "FormExpirationDt" | unique_date < FormExpirationDt ~ .)
-    )
-  )
-
-# If FormExpirationDt is on the same date as another event for a patient, merge the rows
-duplicates <- full_list %>% 
-  group_by(PX_ID, unique_date) %>% 
-  filter(n() > 1) %>%
-  mutate(unique_event = str_c(unique_event, collapse = ",")) %>%
-  summarise(
-    across(
-      c(everything(), -rec_exception),
-      ~last(na.omit(.))
-    ),
-    rec_exception = max(rec_exception)
-  ) %>%
-  ungroup()
-
-uniques <- full_list %>%
-  group_by(PX_ID, unique_date) %>% 
-  filter(n() <= 1) %>%
-  ungroup()
-
-full_list <- uniques %>%
-  bind_rows(duplicates) %>%
-  arrange(PX_ID, unique_date)
-
-rm(uniques, duplicates)
+# expirations <- full_list %>%
+#   filter(rec_exception_ever == 1) %>%
+#   group_by(PX_ID) %>%
+#   mutate(rec_exception_next = lead(rec_exception),
+#          exception_change = case_when(
+#              rec_exception != rec_exception_next ~ 1,
+#            TRUE ~ 0,
+#          ),
+#          last_dt_temp = max(unique_date)
+#          ) %>%
+#   ungroup() %>%
+#   filter(exception_change == 1) %>%
+#   mutate(unique_date = FormExpirationDt, 
+#          unique_event = "FormExpirationDt",
+#          rec_exception = 0) %>%
+#   filter(unique_date <= last_dt_temp) %>%
+#   select(-c(rec_exception_next, exception_change, last_dt_temp)) %>%
+#   unique()
+# 
+# full_list <- expirations %>%
+#   bind_rows(full_list) %>%
+#   arrange(PX_ID, unique_date) %>%
+#   group_by(PX_ID) %>%
+#   fill(everything(), .direction = "down") %>%
+#   filter(unique_event != "FormExpirationDt" | unique_date >= FormExpirationDt) %>% 
+#   mutate(
+#     across(
+#       c(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, Exception, ApplicationStatus, ApplicationStatus_descrip),
+#       ~ case_when(unique_event == "FormExpirationDt" | unique_date < FormExpirationDt ~ .)
+#     )
+#   )
+# 
+# # If FormExpirationDt is on the same date as another event for a patient, merge the rows
+# duplicates <- full_list %>% 
+#   group_by(PX_ID, unique_date) %>% 
+#   filter(n() > 1) %>%
+#   mutate(unique_event = str_c(unique_event, collapse = ",")) %>%
+#   summarise(
+#     across(
+#       c(everything(), -rec_exception),
+#       ~last(na.omit(.))
+#     ),
+#     rec_exception = max(rec_exception)
+#   ) %>%
+#   ungroup()
+# 
+# uniques <- full_list %>%
+#   group_by(PX_ID, unique_date) %>% 
+#   filter(n() <= 1) %>%
+#   ungroup()
+# 
+# full_list <- uniques %>%
+#   bind_rows(duplicates) %>%
+#   arrange(PX_ID, unique_date)
+# 
+# rm(uniques, duplicates)
+# 
+# full_list %>% filter(rec_exception_ever == 1) %>% select(PX_ID, unique_event, unique_date, CANHX_STAT_CD, RequestedCandStatCd, rec_exception, FormExpirationDt, JustId) %>% View()
 ```
 
 ## Recalculate t_start and t_stop
@@ -424,7 +397,7 @@ full_list <- full_list %>%
 
 ## Add active time on waitlist
 ``` {r active_time}
-full_list_active <- full_list %>%
+active <- full_list %>%
   group_by(PX_ID) %>%
   mutate(
     t_diff = case_when(
@@ -438,7 +411,9 @@ full_list_active <- full_list %>%
   ungroup()
 
 full_list <- full_list %>%
-  left_join(full_list_active, by = "PX_ID")
+  left_join(active, by = "PX_ID")
+
+rm(active)
 ```
 
 # Select variables
