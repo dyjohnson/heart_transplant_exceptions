@@ -581,42 +581,27 @@ write_csv(full_list, "full_list_clean.csv")
 
 # See which deaths aren't being captured
 ``` {r check_deaths}
-# cand_thor_deaths <- cand_thor %>% 
-#   filter(
-#     CAN_AGE_IN_MONTHS_AT_LISTING >= 216 &
-#       CAN_LISTING_DT >= as.Date("2018-10-18") &
-#       CAN_LISTING_DT <= as.Date("2021-12-01") &
-#       WL_ORG == "HR" &
-#       CAN_REM_CD %in% c(5, 6, 7, 8, 9, 10, 12, 13, 16, 17, 20, 24)
-#   )
-# 
-# load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_consort.RData")
-# 
-# full_list_for_consort <- full_list
-# 
-# full_list_for_consort_deaths <- full_list_for_consort %>%
-#   group_by(PX_ID) %>%
-#   filter(unique_date <= final_removal_dt) %>%
-#   filter(
-#     any(death == 1)
-#   )
-# 
-# not_captured <- cand_thor_deaths %>% filter(!(PX_ID %in% full_list_for_consort_deaths$PX_ID))
-# 
-# stathist_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/stathist_thor.sas7bdat")
-# 
-# load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
-# 
-# full_list_clean <- full_list
-# 
-# full_list_clean_deaths <- full_list_clean %>%
-#   group_by(PX_ID) %>%
-#   filter(unique_date_stop <= final_removal_dt) %>%
-#   filter(
-#     any(death == 1)
-#   )
-# 
-# not_captured_clean <- cand_thor_deaths %>% filter(!(PX_ID %in% full_list_clean_deaths$PX_ID))
-# 
-# full_list_clean %>% filter(PX_ID %in% not_captured_clean$PX_ID) %>% View()
+load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
+
+cand_thor_deaths_2020 <- cand_thor %>%
+  filter(CAN_REM_CD == 8 & year(CAN_REM_DT) == 2020 & WL_ORG == "HR")
+
+not_captured_deaths_2020 <- cand_thor_deaths_2020 %>%
+  filter(!(PX_ID %in% full_list$PX_ID))
+
+not_captured_deaths_2020 %>% select(PX_ID, CAN_LISTING_DT, CAN_AGE_IN_MONTHS_AT_LISTING, CAN_AGE_AT_LISTING, CAN_INIT_STAT)
+
+filtered_2020 <- not_captured_deaths_2020 %>%
+  group_by(PX_ID) %>%
+  filter(
+    CAN_AGE_IN_MONTHS_AT_LISTING >= 216 &
+      CAN_LISTING_DT >= as.Date("2018-10-18") &
+      CAN_LISTING_DT <= as.Date("2021-12-01")
+  ) %>%
+  ungroup() %>%
+  select(PX_ID, CAN_LISTING_DT, CAN_AGE_IN_MONTHS_AT_LISTING, CAN_AGE_AT_LISTING, CAN_INIT_STAT)
+
+load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_consort.RData")
+
+full_list %>% filter(PX_ID %in% filtered_2020$PX_ID) %>% View()
 ```
