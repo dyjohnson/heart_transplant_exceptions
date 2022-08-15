@@ -67,13 +67,13 @@ full_list <- full_list  %>%
 full_list <- full_list %>%
   filter(
     grepl(
-      "CAN_LISTING_DT|PERS_OPTN_DEATH_DT|PERS_OPTN_DEATH_DT|PERS_RESTRICT_DEATH_DT|CAN_REM_DT|CANHX_BEGIN_DT|REC_TX_DT|ChangeDt",
+      "CAN_LISTING_DT|PERS_OPTN_DEATH_DT|PERS_SSA_DEATH_DT|PERS_RESTRICT_DEATH_DT|CAN_REM_DT|CANHX_BEGIN_DT|REC_TX_DT|ChangeDt",
       unique_event
     )
   )
 ```
 
-# Extract listing, removal, and transplant dates
+## Extract listing, removal, and transplant dates
 ``` {r CAN_LISTING_DT}
 full_list <- full_list %>%
   mutate(
@@ -216,7 +216,7 @@ full_list <- full_list %>%
   ungroup()
 ```
 
-## Drop inactive rows for patients who list as inactive and become active later
+## Drop inactive rows for candidates who list as inactive and become active later
 ``` {r drop_inactive}
 full_list <- full_list %>% 
   filter(!is.na(can_stat_active) | can_stat_min %in% c(1999, 2999))
@@ -270,7 +270,7 @@ full_list <- full_list %>%
   group_by(PX_ID) %>%
   fill(rec_exception_ever, .direction = "downup") %>%
   ungroup() %>%
-  mutate(rec_exception_ever = replace_na(rec_exception_ever, 0))
+  mutate(rec_exception_ever = tidyr::replace_na(rec_exception_ever, 0))
 ```
 
 ## Recalculate t_start and t_stop
@@ -364,7 +364,7 @@ full_list <- full_list %>%
   group_by(PX_ID) %>%
   fill(rec_exception_init, .direction = "downup") %>%
   ungroup() %>%
-  mutate(rec_exception_init = replace_na(rec_exception_init, 0))
+  mutate(rec_exception_init = tidyr::replace_na(rec_exception_init, 0))
 ```
 
 ## Add a variable for whether a candidate received an exception at listing or later
@@ -397,7 +397,7 @@ full_list <- full_list %>%
 
 ## Add death
 ```{r death}
-# Several patients may be removed from the waitlist without getting a transplant but still die. This variable death accounts for that. Basically, if a patient has a removal code for anything other than transplantation and has a death_dt on file, then they are coded as having died.
+# Several candidates may be removed from the waitlist without getting a transplant but still die. This variable death accounts for that. Basically, if a candidate has a removal code for anything other than transplantation and has a death_dt on file, then they are coded as having died.
 full_list <- full_list %>%
   mutate(death = case_when(
     unique_date >= death_dt &
@@ -406,7 +406,7 @@ full_list <- full_list %>%
   ))
 ```
 
-## Add removal cause. If a patient is not removed from the waitlist yet, then they are coded as 0. Death = 1. Transplant = 2. All other causes = 3.
+## Add removal cause. If a candidate is not removed from the waitlist yet, then they are coded as 0. Death = 1. Transplant = 2. All other causes = 3.
 ```{r removal_cause}
 full_list <- full_list %>%
   mutate(
@@ -459,6 +459,7 @@ full_list <- full_list %>%
 ## Add active time on waitlist
 ``` {r active_time}
 active <- full_list %>%
+  filter(unique_date < final_removal_dt) %>%
   group_by(PX_ID) %>%
   mutate(
     t_diff = case_when(
@@ -491,13 +492,13 @@ full_list <- full_list %>%
     can_stat_min %in% c(2110, 2120, 2130, 2140, 2150, 2160, 2999) &
       can_stat_min != 2999 &
       WL_ORG == "HR" &
-      can_listing_ctr_count >= 10 &
-      active_time >= 14
+      can_listing_ctr_count >= 10 #&
+      # active_time >= 14
   ) %>%
   ungroup()
 ```
 
-# Save data for the funnel plot before merging last two rows for each patient
+# Save data for the funnel plot before merging last two rows for each candidate
 ```{r save_funnel_data}
 full_list_for_funnel <- full_list
 
@@ -506,7 +507,7 @@ setwd("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP")
 save(full_list_for_funnel, file = "full_list_for_funnel.RData")
 ```
 
-# Combine the last two rows for each patient so their final row isn't a single day
+# Combine the last two rows for each candidate so their final row isn't a single day
 ```{r final_row}
 # Turn unique_date into unique_date_start and add unique_date_stop
 full_list <- full_list %>%
@@ -517,7 +518,7 @@ full_list <- full_list %>%
   relocate(unique_date_stop, .after = unique_date_start) %>%
   ungroup()
 
-# Merge the data in the last two rows for each patient
+# Merge the data in the last two rows for each candidate
 full_list_head <- full_list %>%
   group_by(PX_ID) %>%
   slice_head(n = -2) %>%
@@ -564,16 +565,58 @@ full_list <- full_list %>%
   relocate(unique_event, unique_date_start, .before = unique_date_stop) %>%
   relocate(t_start, .before = t_stop) %>% 
   relocate(exception_start, .before = exception_stop) %>%
-  relocate(stat_start, .before = stat_stop)
-
-# PX_ID = 1428545
+  relocate(stat_start, .before = stat_stop) %>%
+  arrange(PX_ID, unique_date_start) %>% 
+  arrange(PX_ID, unique_date_start)
 ```
 
 # Save final data
-```{r save_clean_data}
+``` {r save_clean_data}
 setwd("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP")
 
 save(full_list, file = "full_list_clean.RData")
 
 write_csv(full_list, "full_list_clean.csv")
+```
+
+# See which deaths aren't being captured
+``` {r check_deaths}
+# cand_thor_deaths <- cand_thor %>% 
+#   filter(
+#     CAN_AGE_IN_MONTHS_AT_LISTING >= 216 &
+#       CAN_LISTING_DT >= as.Date("2018-10-18") &
+#       CAN_LISTING_DT <= as.Date("2021-12-01") &
+#       WL_ORG == "HR" &
+#       CAN_REM_CD %in% c(5, 6, 7, 8, 9, 10, 12, 13, 16, 17, 20, 24)
+#   )
+# 
+# load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_consort.RData")
+# 
+# full_list_for_consort <- full_list
+# 
+# full_list_for_consort_deaths <- full_list_for_consort %>%
+#   group_by(PX_ID) %>%
+#   filter(unique_date <= final_removal_dt) %>%
+#   filter(
+#     any(death == 1)
+#   )
+# 
+# not_captured <- cand_thor_deaths %>% filter(!(PX_ID %in% full_list_for_consort_deaths$PX_ID))
+# 
+# stathist_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/stathist_thor.sas7bdat")
+# 
+# load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
+# 
+# full_list_clean <- full_list
+# 
+# full_list_clean_deaths <- full_list_clean %>%
+#   group_by(PX_ID) %>%
+#   filter(unique_date_stop <= final_removal_dt) %>%
+#   filter(
+#     any(death == 1)
+#   )
+# 
+# not_captured_clean <- cand_thor_deaths %>% filter(!(PX_ID %in% full_list_clean_deaths$PX_ID))
+# 
+# full_list_clean %>% filter(PX_ID %in% not_captured_clean$PX_ID) %>% View()
 ```
