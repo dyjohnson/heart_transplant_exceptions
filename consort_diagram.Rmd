@@ -36,12 +36,14 @@ consort <- full_list %>%
     trialno = PX_ID,
     min_stat = min(as.numeric(as.character(CANHX_STAT_CD))),
     exc1 = case_when(
-      min(as.numeric(as.character(CANHX_STAT_CD))) == 2999 ~ "Listed as Inactive",
-      !(min(as.numeric(as.character(CANHX_STAT_CD))) %in% c(2110, 2120, 2130, 2140, 2150, 2160, 2999)) ~ "Listed Using Previous Classification
-      System", # Change to minimum status
-      WL_ORG != "HR" ~ "Listed for Multiple Organs",
-      can_listing_ctr_count < 10 ~ "Listed at a Low-volume Center (<10 Heart
-      Transplant Candidates Per Year)"
+      !can_stat_min %in% c(2110, 2120, 2130, 2140, 2150, 2160, 2999) ~ "Listed using previous classification
+      system",
+      can_stat_min == 2999 ~ "Listed as permanently inactive",
+      WL_ORG != "HR" ~ "Listed for multiple organs",
+      can_listing_ctr_count < 10 ~ "Listed at a low-volume center (<10 heart
+      transplant candidates per year)"#,
+      # active_time < 14 ~ "Less than 14 days active on the waiting 
+      # list"
     ),
     arm3 = rec_exception_init_ever,
     .groups = "drop"
@@ -51,13 +53,13 @@ consort <- full_list %>%
 consort_plot <- consort_plot(
   data = consort,
   orders = c(
-    trialno = "All Patients < 18 Years Old Listed in 
-    SRTR Database from October 18, 2018 
+    trialno = "All candidates ≥18 years old listed in 
+    SRTR database from October 18, 2018 
     to December 1, 2021",
     exc1    = "Exclusions",
-    trialno = "Study Cohort",
-    arm3 = "Exception Status",
-    trialno = "Final Analysis"
+    trialno = "Study cohort",
+    arm3 = "Exception status",
+    trialno = "Final analysis"
   ),
   side_box = c("exc1"),
   allocation = "arm3",

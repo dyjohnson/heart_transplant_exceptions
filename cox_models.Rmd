@@ -33,20 +33,8 @@ load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
 # Cox models
 ```{r cox_models}
 full_list_cox <- full_list %>%
-    select(
-    PX_ID,
-    t_start,
-    t_stop,
-    unique_date_start,
-    death,
-    final_removal_dt,
-    CANHX_STAT_CD,
-    can_stat_active,
-    rec_exception,
-    CAN_LISTING_CTR_ID
-  ) %>%
   filter(
-    unique_date_start <= final_removal_dt
+    unique_date_stop <= final_removal_dt
   ) %>%
   mutate(
     can_stat_active = factor(

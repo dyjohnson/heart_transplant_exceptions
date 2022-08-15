@@ -18,16 +18,8 @@ output:
 ```{r setup, include=FALSE}
 library(knitr)
 library(tidyverse)
-library(lubridate)
 library(haven)
-library(coxme)
-library(survminer)
-library(rmdformats)
 library(gtsummary)
-library(sjPlot)
-library(sjlabelled)
-library(sjmisc)
-library(consort)
 
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
@@ -330,8 +322,7 @@ fortable1 %>%
     lvad,
     other_mcs,
     no_mcs,
-    exception_start,
-    exception_percent
+    exception_start
   ) %>%
   tbl_summary(by = rec_exception_init_ever,
               missing = "no",
@@ -382,7 +373,8 @@ fortable1 %>%
     CAN_ECMO,
     lvad,
     other_mcs,
-    no_mcs
+    no_mcs,
+    exception_start
   ) %>%
   tbl_summary(by = rec_exception_init,
               missing = "no",

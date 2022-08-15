@@ -34,7 +34,7 @@ full_list_surv <- full_list %>%
       CAN_INIT_STAT %in% c(2110, 2120) #, 2130, 2140, 2150, 2160
   ) %>%
   filter(
-    unique_date_start <= final_removal_dt
+    unique_date_stop <= final_removal_dt
   ) %>%
   mutate(
     can_init_stat_w_ex =
@@ -95,7 +95,7 @@ survplot_ex <-
     ylim = c(0.7, 1),
     break.time.by = 30,
     ylab = "Survival Probability",
-    legend.labs = c("No exception", "Exception at listing"),
+    legend.labs = c("No exception at listing", "Exception at listing"),
     censor = TRUE,
     risk.table.y.text.col = T,
     risk.table.y.text = FALSE,
