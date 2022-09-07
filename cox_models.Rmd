@@ -1,7 +1,7 @@
 ---
 title: "cox_models"
 author: "Daniel Johnson"
-date: "2022-08-11"
+date: "2022-08-17"
 output:
   pdf_document:
     toc: yes
@@ -30,12 +30,10 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
 ```
 
-# Cox models
-```{r cox_models}
+# Set up data
+```{r setup_data}
 full_list_cox <- full_list %>%
-  filter(
-    unique_date_stop <= final_removal_dt
-  ) %>%
+  filter(unique_date_stop <= final_removal_dt) %>%
   mutate(
     can_stat_active = factor(
       case_when(
@@ -50,16 +48,25 @@ full_list_cox <- full_list %>%
     can_stat_active = relevel(can_stat_active, ref = "Status 6"),
     rec_exception_status = factor(
       case_when(
-        can_stat_active == "Status 1" & rec_exception == 0 ~ "Status 1 no exception",
-        can_stat_active == "Status 1" & rec_exception == 1 ~ "Status 1 exception",
-        can_stat_active == "Status 2" & rec_exception == 0 ~ "Status 2 no exception",
-        can_stat_active == "Status 2" & rec_exception == 1 ~ "Status 2 exception",
-        can_stat_active == "Status 3" & rec_exception == 0 ~ "Status 3 no exception",
-        can_stat_active == "Status 3" & rec_exception == 1 ~ "Status 3 exception",
-        can_stat_active == "Status 4" & rec_exception == 0 ~ "Status 4 no exception",
-        can_stat_active == "Status 4" & rec_exception == 1 ~ "Status 4 exception",
+        can_stat_active == "Status 1" &
+          rec_exception == 0 ~ "Status 1 no exception",
+        can_stat_active == "Status 1" &
+          rec_exception == 1 ~ "Status 1 exception",
+        can_stat_active == "Status 2" &
+          rec_exception == 0 ~ "Status 2 no exception",
+        can_stat_active == "Status 2" &
+          rec_exception == 1 ~ "Status 2 exception",
+        can_stat_active == "Status 3" &
+          rec_exception == 0 ~ "Status 3 no exception",
+        can_stat_active == "Status 3" &
+          rec_exception == 1 ~ "Status 3 exception",
+        can_stat_active == "Status 4" &
+          rec_exception == 0 ~ "Status 4 no exception",
+        can_stat_active == "Status 4" &
+          rec_exception == 1 ~ "Status 4 exception",
         can_stat_active == "Status 5" ~ "Status 5",
-        TRUE ~ "Status 6"),
+        TRUE ~ "Status 6"
+      ),
       levels = c(
         "Status 1 no exception",
         "Status 1 exception",
@@ -73,11 +80,30 @@ full_list_cox <- full_list %>%
         "Status 6"
       )
     ),
-    rec_exception_status = relevel(rec_exception_status, ref = "Status 6")
-)
+    rec_exception_status = relevel(rec_exception_status, ref = "Status 6"),
+    lvad = factor(
+      case_when(
+        CAN_VAD_TY == 2 ~ "LVAD",
+        TRUE ~ "No LVAD"
+      ),
+      levels = c("LVAD",
+                 "No LVAD")
+    ),
+    lvad = relevel(lvad, ref = "No LVAD"),
+  )
+```
 
+# Filter to centers with at least one death
+``` {r filter_deaths}
+# full_list_cox <- full_list_cox %>% 
+#   group_by(CAN_LISTING_CTR_ID) %>%
+#   mutate(ctr_deaths = sum(death)) %>%
+#   ungroup() %>%
+#   filter(ctr_deaths > 0)
+```
 
 # All statuses and exceptions
+``` {r coxph_stat_ex_long}
 coxph_stat_ex_long <- coxph(Surv(t_start, t_stop, death) ~ rec_exception_status, data = full_list_cox)
 
 summary(coxph_stat_ex_long)
@@ -102,8 +128,10 @@ plot_model(
 )
 
 ggsave("coxph_stat_ex_long.png")
+```
 
 # All statuses and exceptions and random center effects
+``` {r coxme_stat_ex_long}
 coxme_stat_ex_long <- coxme(Surv(t_start, t_stop, death) ~ rec_exception_status + (1 | CAN_LISTING_CTR_ID), data = full_list_cox)
 
 summary(coxme_stat_ex_long)
@@ -129,48 +157,157 @@ plot_model(
 
 ggsave("coxme_stat_ex_long.png")
 
-# All statuses and exceptions and random effects for center and exception
-coxme_stat_ex_long_exrand <- coxme(Surv(t_start, t_stop, death) ~ rec_exception_status + (1 + rec_exception | CAN_LISTING_CTR_ID), data = full_list_cox)
+coxme_stat_ex_long2 <- coxme(Surv(t_start, t_stop, death) ~ can_stat_active + rec_exception + (1 | CAN_LISTING_CTR_ID), data = full_list_cox)
 
-summary(coxme_stat_ex_long_exrand)
+summary(coxme_stat_ex_long2)
+exp(confint(coxme_stat_ex_long2))
 
 plot_model(
-  coxme_stat_ex_long_exrand,
+  coxme_stat_ex_long2,
   show.values = TRUE,
   value.offset = .3,
   axis.labels = c(
+    "Exception",
     "Status 5",
-    "Status 4 exception",
-    "Status 4 no exception",
-    "Status 3 exception",
-    "Status 3 no exception",
-    "Status 2 exception",
-    "Status 2 no exception",
-    "Status 1 exception",
-    "Status 1 no exception"
+    "Status 4",
+    "Status 3",
+    "Status 2",
+    "Status 1"
   ),
-  title = "Mixed Effects Model with Center and Exception Random Effects",
+  title = "Mixed Effects Model with Center Random Effects",
   axis.title = "Hazard Ratio"
 )
 
-ggsave("coxme_stat_ex_long_exrand.png")
-
-# Table of hazard ratios
-hrs <- data.frame(
-  Status = c("Status 1", "Status 2", "Status 3", "Status 4"),
-  Proportional_Hazards = c(
-    exp(coef(coxph_stat_ex_long)[1] + coef(coxph_stat_ex_long)[2]),
-    exp(coef(coxph_stat_ex_long)[3] + coef(coxph_stat_ex_long)[4]),
-    exp(coef(coxph_stat_ex_long)[5] + coef(coxph_stat_ex_long)[6]),
-    exp(coef(coxph_stat_ex_long)[7] + coef(coxph_stat_ex_long)[8])
-  ),
-  Mixed_Effects = c(
-    exp(coef(coxme_stat_ex_long)[1] + coef(coxme_stat_ex_long)[2]),
-    exp(coef(coxme_stat_ex_long)[3] + coef(coxme_stat_ex_long)[4]),
-    exp(coef(coxme_stat_ex_long)[5] + coef(coxme_stat_ex_long)[6]),
-    exp(coef(coxme_stat_ex_long)[7] + coef(coxme_stat_ex_long)[8])
-  )
-)
+ggsave("coxme_stat_ex_long2.png", width = 7, height = 5)
 ```
 
+# All statuses and exceptions, LVAD interaction, and random center effects
+``` {r coxme_lvad}
+coxme_lvad <- coxme(Surv(t_start, t_stop, death) ~ can_stat_active + rec_exception*lvad + (1 | CAN_LISTING_CTR_ID), data = full_list_cox)
 
+summary(coxme_lvad)
+
+plot_model(
+  coxme_lvad,
+  show.values = TRUE,
+  value.offset = .3,
+  axis.labels = c(
+    "Exception * LVAD",
+    "LVAD",
+    "Exception",
+    "Status 5",
+    "Status 4",
+    "Status 3",
+    "Status 2",
+    "Status 1"
+  ),
+  title = "Mixed Effects Model with Center Random Effects and LVAD Interaction",
+  axis.title = "Hazard Ratio"
+)
+
+ggsave("coxme_lvad.png", width = 7, height = 5)
+```
+
+# All statuses and exceptions and random effects for center and exception
+``` {r coxme_stat_ex_long_exrand}
+# coxme_stat_ex_long_exrand <- coxme(Surv(t_start, t_stop, death) ~ rec_exception_status + (1 + rec_exception | CAN_LISTING_CTR_ID), data = full_list_cox)
+# 
+# summary(coxme_stat_ex_long_exrand)
+# 
+# plot_model(
+#   coxme_stat_ex_long_exrand,
+#   show.values = TRUE,
+#   value.offset = .3,
+#   axis.labels = c(
+#     "Status 5",
+#     "Status 4 exception",
+#     "Status 4 no exception",
+#     "Status 3 exception",
+#     "Status 3 no exception",
+#     "Status 2 exception",
+#     "Status 2 no exception",
+#     "Status 1 exception",
+#     "Status 1 no exception"
+#   ),
+#   title = "Mixed Effects Model with Center and Exception Random Effects",
+#   axis.title = "Hazard Ratio"
+# )
+# 
+# ggsave("coxme_stat_ex_long_exrand.png")
+```
+
+# All statuses and exceptions and random effects for center and exception
+``` {r coxme_stat_ex_long_exrand2}
+# coxme_stat_ex_long_exrand2 <- coxme(Surv(t_start, t_stop, death) ~ can_stat_active + rec_exception + (1 + rec_exception | CAN_LISTING_CTR_ID), data = full_list_cox)
+# 
+# summary(coxme_stat_ex_long_exrand2)
+# 
+# plot_model(
+#   coxme_stat_ex_long_exrand2,
+#   show.values = TRUE,
+#   value.offset = .3,
+#   axis.labels = c(
+#     "Exception",
+#     "Status 5",
+#     "Status 4",
+#     "Status 3",
+#     "Status 2",
+#     "Status 1"
+#   ),
+#   title = "Mixed Effects Model with Center and Exception Random Effects",
+#   axis.title = "Hazard Ratio"
+# )
+# 
+# ggsave("coxme_stat_ex_long_exrand2.png", width = 7, height = 5)
+# 
+# # ranef(coxme_stat_ex_long_exrand2)
+```
+
+# All statuses and exceptions and random effects for center and exception without random intercepts
+``` {r coxme_stat_ex_long_exrand3}
+# coxme_stat_ex_long_exrand3 <- coxme(Surv(t_start, t_stop, death) ~ can_stat_active + rec_exception + (rec_exception | CAN_LISTING_CTR_ID), data = full_list_cox)
+# 
+# summary(coxme_stat_ex_long_exrand3)
+# 
+# plot_model(
+#   coxme_stat_ex_long_exrand3,
+#   show.values = TRUE,
+#   value.offset = .3,
+#   axis.labels = c(
+#     "Exception",
+#     "Status 5",
+#     "Status 4",
+#     "Status 3",
+#     "Status 2",
+#     "Status 1"
+#   ),
+#   title = "Mixed Effects Model with Center and Exception Random Effects",
+#   axis.title = "Hazard Ratio"
+# )
+# 
+# ggsave("coxme_stat_ex_long_exrand3.png", width = 7, height = 5)
+```
+
+# Table of hazard ratios
+``` {r hrs}
+# hrs <- data.frame(
+#   Status = c("Status 1", "Status 2", "Status 3", "Status 4"),
+#   Proportional_Hazards = c(
+#     exp(coef(coxph_stat_ex_long)[1] + coef(coxph_stat_ex_long)[2]),
+#     exp(coef(coxph_stat_ex_long)[3] + coef(coxph_stat_ex_long)[4]),
+#     exp(coef(coxph_stat_ex_long)[5] + coef(coxph_stat_ex_long)[6]),
+#     exp(coef(coxph_stat_ex_long)[7] + coef(coxph_stat_ex_long)[8])
+#   ),
+#   Mixed_Effects = c(
+#     exp(coef(coxme_stat_ex_long)[1] + coef(coxme_stat_ex_long)[2]),
+#     exp(coef(coxme_stat_ex_long)[3] + coef(coxme_stat_ex_long)[4]),
+#     exp(coef(coxme_stat_ex_long)[5] + coef(coxme_stat_ex_long)[6]),
+#     exp(coef(coxme_stat_ex_long)[7] + coef(coxme_stat_ex_long)[8])
+#   )
+# )
+```
+
+# Save RData
+``` {r save}
+# save(full_list_cox, coxme_stat_ex_long_exrand, coxme_stat_ex_long_exrand2, coxme_stat_ex_long_exrand3, full_list_cox, file = "cox_models_over10.RData")
+```

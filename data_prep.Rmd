@@ -1,7 +1,7 @@
 ---
 title: "data_prep"
 author: "Daniel Johnson"
-date: "2022-08-11"
+date: "2022-08-17"
 output:
   pdf_document:
     toc: yes
@@ -470,21 +470,6 @@ full_list <- full_list %>%
 rm(active)
 ```
 
-## Add number of candidates per listing center 
-```{r can_listing_ctr_count}
-listing_ctrs <- full_list %>%
-  select(PX_ID, CAN_LISTING_CTR_ID) %>%
-  distinct() %>%
-  group_by(CAN_LISTING_CTR_ID) %>%
-  mutate(can_listing_ctr_count = n()) %>%
-  ungroup()
-
-full_list <- full_list  %>%
-  left_join(listing_ctrs %>%
-              select(CAN_LISTING_CTR_ID, can_listing_ctr_count),
-            by = "CAN_LISTING_CTR_ID")
-```
-
 # Apply exclusion criteria
 ``` {r exclusions}
 # Save data for CONSORT diagram before applying exclusion criteria
@@ -498,8 +483,32 @@ full_list <- full_list %>%
   filter(
     can_stat_min %in% c(2110, 2120, 2130, 2140, 2150, 2160, 2999) &
       can_stat_min != 2999 &
-      WL_ORG == "HR" &
-      can_listing_ctr_count >= 10
+      WL_ORG == "HR"
+  ) %>%
+  ungroup()
+
+# Add number of candidates per listing center
+listing_ctrs <- full_list %>%
+  select(PX_ID, CAN_LISTING_CTR_ID) %>%
+  distinct() %>%
+  group_by(CAN_LISTING_CTR_ID) %>%
+  mutate(can_listing_ctr_count = n()) %>%
+  ungroup()
+
+full_list <- full_list  %>%
+  left_join(
+    listing_ctrs %>%
+      select(PX_ID, CAN_LISTING_CTR_ID, can_listing_ctr_count),
+    by = c("PX_ID", "CAN_LISTING_CTR_ID")
+  )
+
+rm(listing_ctrs)
+
+# Filter out centers with fewer than 10 candidates
+full_list <- full_list %>%
+  group_by(PX_ID) %>%
+  filter(
+    can_listing_ctr_count >= 10
   ) %>%
   ungroup()
 ```
@@ -614,19 +623,19 @@ write_csv(full_list, "full_list_clean.csv")
 
 # Check change in rec_exception
 ``` {r rec_check}
-load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
-
-full_list_new <- full_list
-
-full_list_new <- full_list_new %>% rename(rec_exception_new = rec_exception)
-
-full_list_new_rec <- full_list_new %>% select(PX_ID, unique_date_start, rec_exception_new)
-
-load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/08-12-22 Backup/full_list_clean.RData")
-
-full_list <- full_list %>% left_join(full_list_new_rec, by = c("PX_ID", "unique_date_start"))
-
-rec_exc_diff <- full_list %>% filter(rec_exception != rec_exception_new) %>% select(PX_ID, unique_date_start, unique_date_stop, FormEffectiveDt, FormExpirationDt, ApplicationStatus, Exception, RequestedCandStatCd,  can_stat_active, status_approved,  rec_exception, rec_exception_new)
+# load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
+# 
+# full_list_new <- full_list
+# 
+# full_list_new <- full_list_new %>% rename(rec_exception_new = rec_exception)
+# 
+# full_list_new_rec <- full_list_new %>% select(PX_ID, unique_date_start, rec_exception_new)
+# 
+# load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/08-12-22 Backup/full_list_clean.RData")
+# 
+# full_list <- full_list %>% left_join(full_list_new_rec, by = c("PX_ID", "unique_date_start"))
+# 
+# rec_exc_diff <- full_list %>% filter(rec_exception != rec_exception_new) %>% select(PX_ID, unique_date_start, unique_date_stop, FormEffectiveDt, FormExpirationDt, ApplicationStatus, Exception, RequestedCandStatCd,  can_stat_active, status_approved,  rec_exception, rec_exception_new)
 # 
 # load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/08-12-22 Backup/full_list_for_funnel.RData")
 ```
