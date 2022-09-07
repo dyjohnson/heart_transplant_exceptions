@@ -100,6 +100,7 @@ full_list <- full_list %>%
     CAN_INIT_STAT,
     CAN_REM_CD,
     CANHX_STAT_CD,
+    CAN_VAD_TY,
     WL_ORG,
     
     # JustFormHR variables
@@ -488,29 +489,14 @@ full_list <- full_list %>%
   ungroup()
 
 # Add number of candidates per listing center
-listing_ctrs <- full_list %>%
-  select(PX_ID, CAN_LISTING_CTR_ID) %>%
-  distinct() %>%
+full_list <- full_list %>%
   group_by(CAN_LISTING_CTR_ID) %>%
-  mutate(can_listing_ctr_count = n()) %>%
+  mutate(can_listing_ctr_count = n_distinct(PX_ID)) %>%
   ungroup()
-
-full_list <- full_list  %>%
-  left_join(
-    listing_ctrs %>%
-      select(PX_ID, CAN_LISTING_CTR_ID, can_listing_ctr_count),
-    by = c("PX_ID", "CAN_LISTING_CTR_ID")
-  )
-
-rm(listing_ctrs)
 
 # Filter out centers with fewer than 10 candidates
 full_list <- full_list %>%
-  group_by(PX_ID) %>%
-  filter(
-    can_listing_ctr_count >= 10
-  ) %>%
-  ungroup()
+  filter(can_listing_ctr_count >= 10)
 ```
 
 # Save data for the funnel plot before merging last two rows for each candidate
