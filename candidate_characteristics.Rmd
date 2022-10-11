@@ -26,8 +26,8 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 # Data sources
 ```{r data_in}
-load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
-cand_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/cand_thor.sas7bdat")
+load("C:/Users/Daniel/OneDrive/Documents/Research/SRP/full_list_clean.RData")
+cand_thor <- read_sas("C:/Users/Daniel/Box/SAF 2022 Q2/pubsaf2206/cand_thor.sas7bdat")
 ```
 
 # Patient characteristics
@@ -85,11 +85,11 @@ fortable1 <- full_list_px %>%
     ),
     functional_status = factor(
       case_when(
-        CAN_FUNCTN_STAT > 2079 ~ "Little to no impairment, 80-100%",
+        CAN_FUNCTN_STAT > 2079 ~ "Excellent",
         CAN_FUNCTN_STAT > 2049 &
-          CAN_FUNCTN_STAT < 4071 ~ "Moderate impairment, 50-70%",
+          CAN_FUNCTN_STAT < 4071 ~ "Moderate",
         CAN_FUNCTN_STAT > 2009 &
-          CAN_FUNCTN_STAT < 4041 ~ "Severe impairment, 10-40%",
+          CAN_FUNCTN_STAT < 4041 ~ "Poor",
         TRUE ~ "Unknown"
       )
     ),
@@ -135,10 +135,11 @@ fortable1 <- full_list_px %>%
     ),
     rec_exception_init_ever = factor(
       case_when(
-        rec_exception_init == 1 ~ "Initial exception",
-        rec_exception_ever == 1 ~ "Later exception",
+        rec_exception_init == 1 ~ "Exception at listing",
+        rec_exception_ever == 1 ~ "Exception after listing",
         TRUE ~ "No exception"
-      )
+      ),
+      levels = c("Exception at listing", "Exception after listing", "No exception") 
     ),
     rec_exception_ever = factor(
       case_when(
@@ -302,6 +303,33 @@ var_label_list <- list(age = "Age at listing (years)",
 
 labelled::var_label(fortable1) <- var_label_list
 
+# temp <- fortable1 %>% 
+#   mutate(rec_exception_ever = case_when(
+#     rec_exception_ever == 1 ~ "Exception",
+#     TRUE ~ "No exception"
+#   )) 
+# 
+# chisq.test(fortable1$rec_exception_ever, fortable1$race)
+# 
+# temp <- fortable1 %>%
+#   mutate(black = case_when(race == "Black" ~ "Black", TRUE ~ "Not black"),
+#          private = case_when(payor == "Private" ~ "Private", TRUE ~ "Public"),
+#          stat2 = if_else(init_status == "Status 2", 0, 1))
+# 
+# chisq.test(temp$rec_exception_init, temp$black)
+# 
+# chisq.test(temp$rec_exception_ever, temp$private)
+# 
+# temp_init_ever <- temp %>% 
+#   filter(rec_exception_init_ever %in% c("Exception at listing", "Exception after listing"))
+# 
+# temp_init_no <- temp %>% 
+#   filter(rec_exception_init_ever %in% c("Exception at listing", "No exception"))
+# 
+# chisq.test(temp_init_ever$rec_exception_init, temp_init_ever$stat2)
+# 
+# chisq.test(temp_init_no$rec_exception_init, temp_init_no$stat2)
+
 fortable1 %>%
   select(
     # rec_exception_ever,
@@ -342,15 +370,15 @@ fortable1 %>%
 
 fortable1 %>%
   select(
-    rec_exception_init,
+    rec_exception_init_ever,
     age,
     sex,
     race,
-    payor,
-    CAN_BMI,
-    init_status
+    payor
+    # CAN_BMI,
+    # init_status
   ) %>%
-  tbl_summary(by = rec_exception_init,
+  tbl_summary(by = rec_exception_init_ever,
               missing = "no",
               label = list(sex ~ "Female"),
               value = list(sex ~ "Female")
@@ -364,28 +392,29 @@ fortable1 %>%
 
 fortable1 %>%
   select(
-    rec_exception_init,
-    functional_status,
-    primary_diagnosis,
-    diabetes,
-    cva,
+    rec_exception_init_ever,
+    # functional_status,
+    # primary_diagnosis,
+    # diabetes,
+    # cva,
+    init_status,
     CAN_IABP,
     CAN_ECMO,
     lvad,
     other_mcs,
-    no_mcs,
-    exception_start
+    no_mcs
+    # exception_start
   ) %>%
-  tbl_summary(by = rec_exception_init,
+  tbl_summary(by = rec_exception_init_ever,
               missing = "no",
-              value = list(diabetes ~ "Diabetes",
-                           cva ~ "CVA",
+              value = list(#diabetes ~ "Diabetes",
+                           #cva ~ "CVA",
                            lvad ~ "Durable LVAD",
                            other_mcs ~ "Other MCS",
                            no_mcs ~ "No MCS")
               ) %>%
   add_p(test.args = all_tests("fisher.test") ~ list(workspace=2e7)) %>%
-  add_overall() %>%
+  add_overall() #%>%
   as_gt() %>%
   gt::gtsave(
     filename = "table1_short2.png"
