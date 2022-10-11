@@ -181,7 +181,7 @@ population_time <- ggplot(data = alive, aes(x = time)) +
     colour = "black",
     alpha = 0.75
   ) +
-  labs(y = "Number of Patients Alive", x = "Days Since Listing") +
+  labs(y = "Number of Candidates Alive", x = "Days Since Listing") +
   scale_fill_manual(values = cbPalette,
                     name = "",
                     breaks = c("Alive with exception", "Alive without exception", "Transplanted with exception", "Transplanted without exception", "Delisted with exception", "Delisted without exception"),
@@ -297,7 +297,7 @@ stat_time <- ggplot(data = status, aes(x = time)) +
     colour = "black",
     alpha = 0.75
   ) +
-  labs(y = "Number of Patients Alive", x = "Days Since Listing") +
+  labs(y = "Number of Candidates Alive", x = "Days Since Listing") +
   scale_fill_manual(
     name = "",
     values = c(
