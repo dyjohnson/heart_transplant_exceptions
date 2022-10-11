@@ -27,7 +27,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 # Data sources
 ```{r data_in}
-load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
+load("C:/Users/Daniel/OneDrive/Documents/Research/SRP/full_list_clean.RData")
 ```
 
 # Set up data
@@ -90,6 +90,14 @@ full_list_cox <- full_list %>%
                  "No LVAD")
     ),
     lvad = relevel(lvad, ref = "No LVAD"),
+    except_type = factor(
+      case_when(
+        CAN_VAD_TY == 2 & rec_exception == 1 ~ "except_vad",
+        rec_exception == 1 ~ "except_no_vad",
+        TRUE ~ "no_except"
+      )
+    ),
+    except_type = relevel(except_type, ref = "no_except"),
   )
 ```
 
@@ -180,7 +188,66 @@ plot_model(
 
 ggsave("coxme_stat_ex_long2.png", width = 7, height = 5)
 ```
+# Each status and exceptions and random center effects
+```{r coxme_stat_ex}
+# Status 1
+full_list_cox_stat1 <- full_list_cox %>%
+  filter(can_stat_active == "Status 1")
 
+coxme_stat1_ex <- coxme(Surv(t_start, t_stop, death) ~ rec_exception + (1 | CAN_LISTING_CTR_ID), data = full_list_cox_stat1)
+
+summary(coxme_stat1_ex)
+exp(confint(coxme_stat1_ex))
+
+# Status 2
+full_list_cox_stat2 <- full_list_cox %>%
+  filter(can_stat_active == "Status 2")
+
+coxme_stat2_ex <- coxme(Surv(t_start, t_stop, death) ~ rec_exception + (1 | CAN_LISTING_CTR_ID), data = full_list_cox_stat2)
+
+summary(coxme_stat2_ex)
+exp(confint(coxme_stat2_ex))
+
+# Status 3
+full_list_cox_stat3 <- full_list_cox %>%
+  filter(can_stat_active == "Status 3")
+
+coxme_stat3_ex <- coxme(Surv(t_start, t_stop, death) ~ rec_exception + (1 | CAN_LISTING_CTR_ID), data = full_list_cox_stat3)
+
+summary(coxme_stat3_ex)
+exp(confint(coxme_stat3_ex))
+
+# Status 4
+full_list_cox_stat4 <- full_list_cox %>%
+  filter(can_stat_active == "Status 4")
+
+coxme_stat4_ex <- coxme(Surv(t_start, t_stop, death) ~ rec_exception + (1 | CAN_LISTING_CTR_ID), data = full_list_cox_stat4)
+
+summary(coxme_stat4_ex)
+exp(confint(coxme_stat4_ex))
+
+# Plot
+coxme_stats_ex <- plot_models(
+  coxme_stat1_ex,
+  coxme_stat2_ex,
+  coxme_stat3_ex,
+  coxme_stat4_ex,
+  axis.labels = "Exception",
+  m.labels = c("Status 1", "Status 2", "Status 3", "Status 4"),
+  title = "Mixed Effects Model with Center Random Effects",
+  legend.title = "",
+  axis.title = "Hazard Ratio",
+  spacing = 1,
+  show.values = TRUE,
+  show.p = TRUE
+)
+
+coxme_stats_ex$layers[[4]]$aes_params$hjust <- 0.4
+
+coxme_stats_ex
+
+ggsave("coxme_stats_ex.png", width = 7, height = 5)
+```
 # All statuses and exceptions, LVAD interaction, and random center effects
 ``` {r coxme_lvad}
 coxme_lvad <- coxme(Surv(t_start, t_stop, death) ~ can_stat_active + rec_exception*lvad + (1 | CAN_LISTING_CTR_ID), data = full_list_cox)
@@ -206,6 +273,34 @@ plot_model(
 )
 
 ggsave("coxme_lvad.png", width = 7, height = 5)
+
+coxme_lvad2 <- coxme(Surv(t_start, t_stop, death) ~ can_stat_active + except_type + (1 | CAN_LISTING_CTR_ID), data = full_list_cox)
+
+summary(coxme_lvad2)
+exp(confint(coxme_lvad2))
+
+coxme_lvad3 <- coxme(Surv(t_start, t_stop, death) ~ can_stat_active + except_type + (1 | CAN_LISTING_CTR_ID), data = full_list_cox %>% mutate(except_type = relevel(except_type, ref = "except_no_vad")))
+
+summary(coxme_lvad3)
+
+plot_model(
+  coxme_lvad2,
+  show.values = TRUE,
+  value.offset = .3,
+  axis.labels = c(
+    "Exception with LVAD",
+    "Exception without LVAD",
+    "Status 5",
+    "Status 4",
+    "Status 3",
+    "Status 2",
+    "Status 1"
+  ),
+  title = "Mixed Effects Model with Center Random Effects and LVAD Interaction",
+  axis.title = "Hazard Ratio"
+)
+
+ggsave("coxme_lvad2.png", width = 7, height = 5)
 ```
 
 # All statuses and exceptions and random effects for center and exception
