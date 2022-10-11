@@ -28,24 +28,48 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_consort.RData")
 ```
 
+# Filter data to update candidates per listing center
+```{r can_listing_ctr_count}
+# Apply exclusion criteria
+full_list_filtered <- full_list %>%
+  group_by(PX_ID) %>%
+  filter(
+    can_stat_min %in% c(2110, 2120, 2130, 2140, 2150, 2160, 2999) &
+      can_stat_min != 2999 &
+      WL_ORG == "HR"
+  ) %>%
+  ungroup()
+
+# Add number of candidates per listing center
+full_list_filtered <- full_list_filtered %>%
+  group_by(CAN_LISTING_CTR_ID) %>%
+  mutate(can_listing_ctr_count = n_distinct(PX_ID)) %>%
+  ungroup() %>%
+  select(CAN_LISTING_CTR_ID, can_listing_ctr_count) %>%
+  distinct()
+
+# Merge with original
+full_list <- full_list %>%
+  left_join(full_list_filtered, by = "CAN_LISTING_CTR_ID")
+
+rm(full_list_filtered)
+```
+
 # CONSORT diagram
 ```{r consort}
 consort <- full_list %>%
   group_by(PX_ID) %>%
   summarise(
     trialno = PX_ID,
-    min_stat = min(as.numeric(as.character(CANHX_STAT_CD))),
     exc1 = case_when(
-      !can_stat_min %in% c(2110, 2120, 2130, 2140, 2150, 2160, 2999) ~ "Listed using previous classification
+      !can_stat_min %in% c(2110, 2120, 2130, 2140, 2150, 2160, 2999) ~ "Listed using previous allocation
       system",
       can_stat_min == 2999 ~ "Listed as permanently inactive",
       WL_ORG != "HR" ~ "Listed for multiple organs",
       can_listing_ctr_count < 10 ~ "Listed at a low-volume center (<10 heart
-      transplant candidates per year)"#,
-      # active_time < 14 ~ "Less than 14 days active on the waiting 
-      # list"
+      transplant candidates per year)"
     ),
-    arm3 = rec_exception_init_ever,
+    arm3 = factor(rec_exception_init_ever, levels = c("Exception at listing", "Exception after listing", "No exception")),
     .groups = "drop"
   ) %>%
   distinct()
@@ -57,8 +81,7 @@ consort_plot <- consort_plot(
     SRTR database from October 18, 2018 
     to December 1, 2021",
     exc1    = "Exclusions",
-    trialno = "Study cohort",
-    arm3 = "Exception status",
+    arm3 = "Study cohort",
     trialno = "Final analysis"
   ),
   side_box = c("exc1"),
