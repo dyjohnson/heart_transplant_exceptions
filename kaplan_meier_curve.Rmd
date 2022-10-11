@@ -54,6 +54,7 @@ full_list_surv <- full_list %>%
     survival_time = max(survival_time),
     rec_exception = max(rec_exception),
     rec_exception_init = max(rec_exception_init),
+    rec_exception_init_ever = last(rec_exception_init_ever),
     can_init_stat = first(CANHX_STAT_CD),
     can_init_stat_w_ex = max(can_init_stat_w_ex),
     removal_cause = last(removal_cause),
@@ -102,8 +103,40 @@ survplot_ex <-
     tables.height = 0.3
   )
 
+t <- survfit(Surv(survival_time, death) ~ rec_exception_init, data = full_list_surv)
+
+x <- survfit(Surv(survival_time, death) ~ rec_exception_init_ever, data = full_list_surv)
+
 survplot_ex
 
 # png("survplot_ex.png")
 # print(survplot_ex)
+
+survplot_ex2 <-
+  ggsurvplot(
+    fit = survfit(Surv(survival_time, death) ~ rec_exception_init_ever, data = full_list_surv),
+    pval = TRUE,
+    pval.coord = c(0,0.73),
+    conf.int = FALSE,
+    risk.table = TRUE,
+    risk.table.col = "strata",
+    xlim = c(0, 180),
+    xlab = "Days After Listing",
+    ylim = c(0.7, 1),
+    break.time.by = 30,
+    ylab = "Survival Probability",
+    legend.labs = c("Exception after listing", "No exception"), #"Exception at listing", 
+    censor = TRUE,
+    risk.table.y.text.col = T,
+    risk.table.y.text = FALSE,
+    tables.height = 0.31
+  )
+
+survplot_ex2
+```
+
+
+``` {r}
+full_list %>% group_by(PX_ID) %>% summarise(PX_ID = last(PX_ID), rec_exception_init_ever = last(rec_exception_init_ever), removal_cause = last(removal_cause)) %>% ungroup() %>% group_by(rec_exception_init_ever) %>% count(removal_cause)
+
 ```
