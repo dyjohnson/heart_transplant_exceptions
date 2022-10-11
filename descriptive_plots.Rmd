@@ -23,7 +23,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 # Data sources
 ```{r data_in}
-load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
+load("C:/Users/Daniel/OneDrive/Documents/Research/SRP/full_list_clean.RData")
 ```
 
 # Descriptive plots
@@ -156,22 +156,78 @@ for_stack <- full_list %>%
       case_when(
         rec_exception == 1 ~ "Exception",
         TRUE ~ "No exception"), 
-      levels = c("Exception", "No exception"))
+      levels = c("Exception", "No exception")),
+    rec_exception_init_ever = factor(
+      case_when(
+        rec_exception == "Exception" & (exception_start == 0 | exception_start == 1) ~ "Exception at listing",
+        rec_exception == "Exception" & exception_start > 1 ~ "Exception after listing",
+        TRUE ~ "No exception"
+      ),
+      levels = c("Exception at listing",
+                 "Exception after listing",
+                 "No exception")
+    )
   ) %>%
   filter(rec_exception_status_change == 1) %>%
   select(-c(rec_exception_status_prev, rec_exception_status_change))
   
-for_stack %>% select(PX_ID, unique_date_start, can_stat_active, rec_exception, rec_exception_status) %>% View()
-
 ggplot(for_stack, aes(x = can_stat_active, fill = rec_exception)) + 
   geom_bar() + 
-  labs(x = "Status", y = "Number of Candidates", fill = "")
+  labs(x = "Status", y = "Number of Status Justifications", fill = "") +
+  geom_text(aes(label = Weight), vjust = -0.2)
 
-ggsave("status_stack.png", width = 10, height = 5)
+ggsave("status_stack.png", width = 8, height = 5)
+
+for_stack <- for_stack %>%
+  group_by(Date) %>%
+  mutate(label_y = cumsum(rec_exception_init_ever))
+
+plot <- ggplot(for_stack, aes(x = can_stat_active, fill = rec_exception_init_ever)) + 
+  geom_bar() + 
+  labs(x = "Status", y = "Number of Status Justifications", fill = "")
+  #geom_text(aes(label = ..count..), stat = "count", colour = "white") +
+
+plot +
+  theme_gdocs() + 
+  scale_fill_gdocs()
+
+ggsave("status_stack_split.png", width = 8, height = 5)
+
+for_stack %>% group_by(can_stat_active) %>% count(rec_exception_init_ever)
+
+197/(197+208+833)
+(208)/(197+208+833)
 ```
 
 # Chart of exceptions by time of exception
 ``` {r exception_by_time}
+temp <- full_list %>%
+  select(PX_ID,
+         rec_exception,
+         can_stat_active,
+         status_approved,
+         exception_start,
+         exception_stop,
+         exception_length) %>%
+  filter(rec_exception == 1 &
+           can_stat_active %in% c(2110, 2120, 2130, 2140)) %>%
+  mutate(
+    can_stat_active = case_when(
+      can_stat_active == 2110 ~ "Status 1",
+      can_stat_active == 2120 ~ "Status 2",
+      can_stat_active == 2130 ~ "Status 3",
+      can_stat_active == 2140 ~ "Status 4"
+    )
+  ) %>%
+  distinct()
+
+temp %>% filter(can_stat_active != status_approved) %>% View()
+
+ggplot(temp, aes(can_stat_active, exception_start)) +
+  geom_boxplot(outlier.shape = NA) +
+  coord_cartesian(ylim = quantile(d$t_start, c(0.1, 0.9))) +
+  labs(x = "Status Exception Approved", y = "Day Exception Approved after Listing")
+
 ggplot(d, aes(status_approved2, t_start)) +
   geom_boxplot(outlier.shape = NA) +
   coord_cartesian(ylim = quantile(d$t_start, c(0.1, 0.9))) +
@@ -189,6 +245,13 @@ e <- full_list %>%
   select(PX_ID, exception_start, exception_stop, exception_length) %>%
   mutate(exception_length_mo = exception_length/30.437) %>%
   unique()
+
+temp <- temp %>%
+  mutate(exception_length_mo = exception_length/30.437)
+
+ggplot(temp, aes(exception_length_mo)) +
+  geom_histogram(binwidth = 1) +
+  labs(x = "Status Exception Length (months)", y = "Count")
 
 ggplot(e, aes(exception_length_mo)) +
   geom_histogram(binwidth = 1) +
