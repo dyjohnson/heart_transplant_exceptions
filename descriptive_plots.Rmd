@@ -17,13 +17,14 @@ output:
 ```{r setup, include=FALSE}
 library(knitr)
 library(tidyverse)
+library(ggthemes)
 
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 
 # Data sources
 ```{r data_in}
-load("C:/Users/Daniel/OneDrive/Documents/Research/SRP/full_list_clean.RData")
+load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
 ```
 
 # Descriptive plots
@@ -173,19 +174,13 @@ for_stack <- full_list %>%
   
 ggplot(for_stack, aes(x = can_stat_active, fill = rec_exception)) + 
   geom_bar() + 
-  labs(x = "Status", y = "Number of Status Justifications", fill = "") +
-  geom_text(aes(label = Weight), vjust = -0.2)
+  labs(x = "Status", y = "Number of Status Justifications", fill = "")
 
 ggsave("status_stack.png", width = 8, height = 5)
-
-for_stack <- for_stack %>%
-  group_by(Date) %>%
-  mutate(label_y = cumsum(rec_exception_init_ever))
 
 plot <- ggplot(for_stack, aes(x = can_stat_active, fill = rec_exception_init_ever)) + 
   geom_bar() + 
   labs(x = "Status", y = "Number of Status Justifications", fill = "")
-  #geom_text(aes(label = ..count..), stat = "count", colour = "white") +
 
 plot +
   theme_gdocs() + 
@@ -194,9 +189,6 @@ plot +
 ggsave("status_stack_split.png", width = 8, height = 5)
 
 for_stack %>% group_by(can_stat_active) %>% count(rec_exception_init_ever)
-
-197/(197+208+833)
-(208)/(197+208+833)
 ```
 
 # Chart of exceptions by time of exception
@@ -221,8 +213,6 @@ temp <- full_list %>%
   ) %>%
   distinct()
 
-temp %>% filter(can_stat_active != status_approved) %>% View()
-
 ggplot(temp, aes(can_stat_active, exception_start)) +
   geom_boxplot(outlier.shape = NA) +
   coord_cartesian(ylim = quantile(d$t_start, c(0.1, 0.9))) +
@@ -245,13 +235,6 @@ e <- full_list %>%
   select(PX_ID, exception_start, exception_stop, exception_length) %>%
   mutate(exception_length_mo = exception_length/30.437) %>%
   unique()
-
-temp <- temp %>%
-  mutate(exception_length_mo = exception_length/30.437)
-
-ggplot(temp, aes(exception_length_mo)) +
-  geom_histogram(binwidth = 1) +
-  labs(x = "Status Exception Length (months)", y = "Count")
 
 ggplot(e, aes(exception_length_mo)) +
   geom_histogram(binwidth = 1) +

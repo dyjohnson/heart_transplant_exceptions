@@ -27,7 +27,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 # Data sources
 ```{r data_in}
-load("C:/Users/Daniel/OneDrive/Documents/Research/SRP/full_list_clean.RData")
+load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
 ```
 
 # Set up data

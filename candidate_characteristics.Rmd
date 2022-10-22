@@ -26,8 +26,8 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 # Data sources
 ```{r data_in}
-load("C:/Users/Daniel/OneDrive/Documents/Research/SRP/full_list_clean.RData")
-cand_thor <- read_sas("C:/Users/Daniel/Box/SAF 2022 Q2/pubsaf2206/cand_thor.sas7bdat")
+load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
+cand_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/cand_thor.sas7bdat")
 ```
 
 # Patient characteristics
@@ -414,7 +414,7 @@ fortable1 %>%
                            no_mcs ~ "No MCS")
               ) %>%
   add_p(test.args = all_tests("fisher.test") ~ list(workspace=2e7)) %>%
-  add_overall() #%>%
+  add_overall() %>%
   as_gt() %>%
   gt::gtsave(
     filename = "table1_short2.png"
