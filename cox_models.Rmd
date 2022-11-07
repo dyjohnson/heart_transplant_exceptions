@@ -188,6 +188,7 @@ plot_model(
 
 ggsave("coxme_stat_ex_long2.png", width = 7, height = 5)
 ```
+
 # Each status and exceptions and random center effects
 ```{r coxme_stat_ex}
 # Status 1
@@ -279,10 +280,6 @@ coxme_lvad2 <- coxme(Surv(t_start, t_stop, death) ~ can_stat_active + except_typ
 summary(coxme_lvad2)
 exp(confint(coxme_lvad2))
 
-coxme_lvad3 <- coxme(Surv(t_start, t_stop, death) ~ can_stat_active + except_type + (1 | CAN_LISTING_CTR_ID), data = full_list_cox %>% mutate(except_type = relevel(except_type, ref = "except_no_vad")))
-
-summary(coxme_lvad3)
-
 plot_model(
   coxme_lvad2,
   show.values = TRUE,
@@ -301,6 +298,10 @@ plot_model(
 )
 
 ggsave("coxme_lvad2.png", width = 7, height = 5)
+
+coxme_lvad3 <- coxme(Surv(t_start, t_stop, death) ~ can_stat_active + except_type + (1 | CAN_LISTING_CTR_ID), data = full_list_cox %>% mutate(except_type = relevel(except_type, ref = "except_no_vad")))
+
+summary(coxme_lvad3)
 ```
 
 # All statuses and exceptions and random effects for center and exception
