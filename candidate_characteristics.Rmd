@@ -319,37 +319,8 @@ var_label_list <- list(age = "Age at listing (years)",
 
 labelled::var_label(fortable1) <- var_label_list
 
-# temp <- fortable1 %>% 
-#   mutate(rec_exception_ever = case_when(
-#     rec_exception_ever == 1 ~ "Exception",
-#     TRUE ~ "No exception"
-#   )) 
-# 
-# chisq.test(fortable1$rec_exception_ever, fortable1$race)
-# 
-# temp <- fortable1 %>%
-#   mutate(black = case_when(race == "Black" ~ "Black", TRUE ~ "Not black"),
-#          private = case_when(payor == "Private" ~ "Private", TRUE ~ "Public"),
-#          stat2 = if_else(init_status == "Status 2", 0, 1))
-# 
-# chisq.test(temp$rec_exception_init, temp$black)
-# 
-# chisq.test(temp$rec_exception_ever, temp$private)
-# 
-# temp_init_ever <- temp %>% 
-#   filter(rec_exception_init_ever %in% c("Exception at listing", "Exception after listing"))
-# 
-# temp_init_no <- temp %>% 
-#   filter(rec_exception_init_ever %in% c("Exception at listing", "No exception"))
-# 
-# chisq.test(temp_init_ever$rec_exception_init, temp_init_ever$stat2)
-# 
-# chisq.test(temp_init_no$rec_exception_init, temp_init_no$stat2)
-
 fortable1 %>%
   select(
-    # rec_exception_ever,
-    # rec_exception_init,
     rec_exception_init_ever,
     init_status_exception,
     age,
@@ -391,16 +362,13 @@ table1 <- function(status, name) {
     init_status == status
   ) %>%
   select(
-    # rec_exception_ever,
     rec_exception_init,
-    # rec_exception_init_ever,
     init_status_exception,
     age,
     sex,
     race,
     payor,
     CAN_BMI,
-    # init_status,
     functional_status,
     primary_diagnosis,
     diabetes,
@@ -434,30 +402,4 @@ table1("Status 3", "table1_status3.png")
 table1("Status 4", "table1_status4.png")
 table1("Status 5", "table1_status5.png")
 table1("Status 6", "table1_status6.png")
-table1("Temporarily inactive", "table1_inactive.png")
-
-# full_list_px %>% group_by(can_stat_active) %>% count(rec_exception_init_ever)
-# full_list_px %>% group_by(can_stat_active) %>% count(rec_exception_time)
-# full_list_px %>% group_by(can_stat_active) %>% count(rec_exception_init)
-# 
-# table(full_list_px$rec_exception_init, full_list_px$rec_exception_time)
-# 
-# wtf <- full_list_px %>% 
-#   filter(rec_exception_init_ever != "Exception at listing" & 
-#            rec_exception_time == "Exception at listing")
-
-# full_list %>% 
-#   #filter(PX_ID %in% wtf$PX_ID) %>% 
-#   select(PX_ID, t_start, t_stop, rec_exception, rec_exception_ever, rec_exception_init, rec_exception_init_ever, rec_exception_time) %>% 
-#   View()
-# 
-# for_stack_stat1_exception <- for_stack %>% filter(can_stat_active == 2110 & rec_exception_time == "Exception at listing")
-# 
-# full_list_px_stat1_exception <- full_list_px %>% filter(can_stat_active == 2110 & rec_exception_time == "Exception at listing")
-# 
-# stat1_exception_diff <- for_stack_stat1_exception %>% filter(!PX_ID %in% full_list_px_stat1_exception$PX_ID)
-# 
-# stat1_exception_diff %>% select(PX_ID, t_start, t_stop, rec_exception, rec_exception_ever, rec_exception_init, rec_exception_init_ever, rec_exception_time) %>% View()
-# 
-# full_list_px %>% filter(PX_ID %in% stat1_exception_diff$PX_ID) %>% select(PX_ID, can_stat_active, rec_exception_ever, rec_exception_init, rec_exception_init_ever, rec_exception_time)
 ```

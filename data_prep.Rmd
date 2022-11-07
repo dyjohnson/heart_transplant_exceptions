@@ -278,12 +278,6 @@ full_list <- full_list %>%
   fill(status_approved, .direction = "down") %>%
   ungroup()
 
-# rec_exception = 1 when a candidate's status matches their approved exception status and the date is between the exception's effective and expiration dates with a 7-day buffer for the effective date
-# full_list <- full_list %>%
-#   mutate(
-#     rec_exception = if_else(can_stat_active == status_approved & unique_date <= FormExpirationDt, 1, 0, missing = 0)
-#   )
-
 full_list <- full_list %>%
   mutate(
     rec_exception = if_else(can_stat_active == status_approved & unique_date <= FormExpirationDt & unique_date + days(7) >= FormEffectiveDt, 1, 0, missing = 0)
@@ -500,28 +494,6 @@ full_list <- full_list %>%
   mutate(survival_time = as.numeric(difftime(final_removal_dt, CAN_LISTING_DT, units = "days")))
 ```
 
-## Add active time on waitlist
-``` {r active_time}
-# active <- full_list %>%
-#   filter(unique_date < final_removal_dt) %>%
-#   group_by(PX_ID) %>%
-#   mutate(
-#     t_diff = case_when(
-#       !(CANHX_STAT_CD %in% c(1999, 2999)) ~ t_stop - t_start
-#     )
-#   ) %>%
-#   summarise(
-#     PX_ID = first(PX_ID),
-#     active_time = sum(t_diff, na.rm = TRUE)
-#   ) %>%
-#   ungroup()
-# 
-# full_list <- full_list %>%
-#   left_join(active, by = "PX_ID")
-# 
-# rm(active)
-```
-
 # Apply exclusion criteria
 ``` {r exclusions}
 # Save data for CONSORT diagram before applying exclusion criteria
@@ -646,91 +618,4 @@ full_list_sample <- full_list %>%
 setwd("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP")
 
 write_csv(full_list, "full_list_sample.csv")
-```
-
-# Check for candidates with multiple simultaneous listings
-``` {r}
-# load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/heart_transplant_exceptions/11-1-22 Backup/full_list_clean.RData")
-# 
-# full_list_pers <- full_list  %>%
-#   left_join(cand_thor %>%
-#               select(PX_ID, PERS_ID),
-#             by = "PX_ID")
-# 
-# duplicates <- full_list_pers %>%
-#   select(PERS_ID, PX_ID, CAN_LISTING_CTR_ID) %>%
-#   unique() %>%
-#   group_by(PERS_ID) %>%
-#   filter(n()>1)
-# 
-# duplicates %>% select(PERS_ID) %>% n_distinct()
-# 
-# duplicates2 <- full_list_pers %>%
-#   select(PERS_ID, CAN_LISTING_CTR_ID) %>%
-#   unique() %>%
-#   group_by(PERS_ID, CAN_LISTING_CTR_ID) %>%
-#   filter(n()>1)
-# 
-# full_list_pers %>%
-#   filter(PX_ID %in% duplicates$PX_ID) %>%
-#   select(PERS_ID, PX_ID, CAN_LISTING_CTR_ID, unique_event, unique_date_start, unique_date_stop, CAN_LISTING_DT, CAN_REM_DT) %>%
-#   View()
-# 
-# full_list_pers %>%
-#   group_by(PERS_ID) %>%
-#   filter(n()>1) %>%
-#   select(PX_ID, PERS_ID, CAN_LISTING_CTR_ID) %>%
-#   View()
-# 
-# total_duplicates <- total %>%
-#   select(PERS_ID, PX_ID, CAN_LISTING_CTR_ID, CAN_LISTING_DT, CAN_REM_DT) %>%
-#   unique() %>%
-#   group_by(PERS_ID) %>%
-#   filter(n()>1)
-```
-
-# See which deaths aren't being captured
-``` {r check_deaths}
-# load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
-# 
-# cand_thor_deaths_2020 <- cand_thor %>%
-#   filter(CAN_REM_CD == 8 & year(CAN_REM_DT) == 2020 & WL_ORG == "HR")
-# 
-# not_captured_deaths_2020 <- cand_thor_deaths_2020 %>%
-#   filter(!(PX_ID %in% full_list$PX_ID))
-# 
-# not_captured_deaths_2020 %>% select(PX_ID, CAN_LISTING_DT, CAN_AGE_IN_MONTHS_AT_LISTING, CAN_AGE_AT_LISTING, CAN_INIT_STAT)
-# 
-# filtered_2020 <- not_captured_deaths_2020 %>%
-#   group_by(PX_ID) %>%
-#   filter(
-#     CAN_AGE_IN_MONTHS_AT_LISTING >= 216 &
-#       CAN_LISTING_DT >= as.Date("2018-10-18") &
-#       CAN_LISTING_DT <= as.Date("2021-12-01")
-#   ) %>%
-#   ungroup() %>%
-#   select(PX_ID, CAN_LISTING_DT, CAN_AGE_IN_MONTHS_AT_LISTING, CAN_AGE_AT_LISTING, CAN_INIT_STAT)
-# 
-# load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_consort.RData")
-# 
-# full_list %>% filter(PX_ID %in% filtered_2020$PX_ID) %>% View()
-```
-
-# Check change in rec_exception
-``` {r rec_check}
-# load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
-# 
-# full_list_new <- full_list
-# 
-# full_list_new <- full_list_new %>% rename(rec_exception_new = rec_exception)
-# 
-# full_list_new_rec <- full_list_new %>% select(PX_ID, unique_date_start, rec_exception_new)
-# 
-# load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/08-12-22 Backup/full_list_clean.RData")
-# 
-# full_list <- full_list %>% left_join(full_list_new_rec, by = c("PX_ID", "unique_date_start"))
-# 
-# rec_exc_diff <- full_list %>% filter(rec_exception != rec_exception_new) %>% select(PX_ID, unique_date_start, unique_date_stop, FormEffectiveDt, FormExpirationDt, ApplicationStatus, Exception, RequestedCandStatCd,  can_stat_active, status_approved,  rec_exception, rec_exception_new)
-# 
-# load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/08-12-22 Backup/full_list_for_funnel.RData")
 ```
