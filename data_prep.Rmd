@@ -29,6 +29,8 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```{r data_in}
 cand_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/cand_thor.sas7bdat")
 JustFormHR <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/SupplementalData2206/ThoracicRegistration/JustFormHR.sas7bdat")
+StatusJustEpisode <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/SupplementalData2206/ThoracicRegistration/StatusJustEpisode.sas7bdat")
+
 load("C:/Users/dyjohnson/Box/Heart Data Pipeline/RData files/full_list_pubsaf2206.RData")
 ```
 
@@ -76,16 +78,51 @@ full_list <- full_list %>%
 save1 <- full_list
 ```
 
-## Select candidates
-```{r select_candidates}
-full_list <- full_list %>%
-  group_by(PX_ID) %>%
+## Apply inclusion criteria
+```{r inclusion_criteria}
+cand_thor_short <- cand_thor %>%
+  select(
+    "PX_ID",
+    "PERS_ID",
+    "CAN_AGE_IN_MONTHS_AT_LISTING",
+    "CAN_LISTING_DT",
+    "CAN_REM_DT",
+    "WL_ORG",
+    "CAN_LISTING_CTR_ID",
+    "CAN_REM_CD"
+  )
+
+cand_thor_short <- cand_thor_short %>%
+  group_by(PERS_ID) %>%
   filter(
     CAN_AGE_IN_MONTHS_AT_LISTING >= 216 &
       CAN_LISTING_DT >= as.Date("2018-10-18") &
       CAN_LISTING_DT <= as.Date("2021-12-01")
   ) %>%
   ungroup()
+```
+
+## Remove all candidates who were simultaneously listed at numerous sites for a heart.
+``` {r multi_listed}
+# Identify candidates with multiple simultaneous listings and keep the most recent listing only
+multi_listed <- cand_thor_short %>%
+  group_by(PERS_ID) %>%
+  arrange(CAN_LISTING_DT) %>%
+  filter(
+    sum(WL_ORG == "HR") > 1 &
+      as.numeric(last(CAN_LISTING_DT) - first(CAN_REM_DT), units = "days") < 0 # Overlapping listings
+  ) %>%
+  slice_tail(n = 1)
+
+# Identify candidates without multiple simultaneous listings
+single_listed <- cand_thor_short %>%
+  filter(!PERS_ID %in% multi_listed$PERS_ID)
+```
+
+## Select candidates from full_list
+``` {r select_candidates}
+full_list <- full_list %>%
+  filter(PX_ID %in% multi_listed$PX_ID | PX_ID %in% single_listed$PX_ID)
 ```
 
 ## Select variables
@@ -241,7 +278,7 @@ full_list <- full_list %>%
   fill(status_approved, .direction = "down") %>%
   ungroup()
 
-# rec_exception = 1 when a candidate's status matches their approved exception status and the date is between the exception's effective and expiration dates with a three-day buffer for the effective date
+# rec_exception = 1 when a candidate's status matches their approved exception status and the date is between the exception's effective and expiration dates with a 7-day buffer for the effective date
 # full_list <- full_list %>%
 #   mutate(
 #     rec_exception = if_else(can_stat_active == status_approved & unique_date <= FormExpirationDt, 1, 0, missing = 0)
@@ -350,7 +387,7 @@ full_list <- full_list %>%
 ``` {r rec_exception_init}
 full_list <- full_list %>%
   mutate(rec_exception_init = case_when(rec_exception == 1 &
-                                          (exception_start == 0 | exception_start == 1) ~ 1)) %>%
+                                          t_start == 0 ~ 1)) %>%
   group_by(PX_ID) %>%
   fill(rec_exception_init, .direction = "downup") %>%
   ungroup() %>%
@@ -424,6 +461,10 @@ full_list <- full_list %>%
   fill(CAN_REM_DT, REC_TX_DT, .direction = "downup") %>%
   ungroup()
 
+# If they were transplanted but don't have a transplant date on file, transplant date = removal date
+full_list <- full_list %>%
+  mutate(REC_TX_DT = coalesce(REC_TX_DT, CAN_REM_DT))
+
 full_list <- full_list %>%
   group_by(PX_ID) %>%
   mutate(
@@ -431,10 +472,20 @@ full_list <- full_list %>%
       removal_cause == 0 ~ max(unique_date), # If they are still on the waitlist, final_removal_dt = most recent record date
       removal_cause == 1 ~ death_dt, # If they died, final_removal_dt = death date
       removal_cause == 2 ~ REC_TX_DT, # If they were transplanted, final_removal_dt = transplant date
+      # removal_cause == 2 & is.na(REC_TX_DT) ~ CAN_REM_DT, # If they were transplanted but don't have a transplant date on file, final_removal_dt = removal date
       removal_cause == 3 ~ CAN_REM_DT # If they were removed for any other reason, final_removal_dt = removal date
-    ))
+    ),
+    na.rm = TRUE)
   ) %>%
   ungroup()
+```
+
+## Delete events over 60 days after delisting
+```{r trim_events}
+full_list <- full_list %>%
+  filter(
+    unique_date <= final_removal_dt + days(60)
+  )
 ```
 
 ## Add variable to indicate if a candidate is on the waitlist
@@ -451,24 +502,24 @@ full_list <- full_list %>%
 
 ## Add active time on waitlist
 ``` {r active_time}
-active <- full_list %>%
-  filter(unique_date < final_removal_dt) %>%
-  group_by(PX_ID) %>%
-  mutate(
-    t_diff = case_when(
-      !(CANHX_STAT_CD %in% c(1999, 2999)) ~ t_stop - t_start
-    )
-  ) %>%
-  summarise(
-    PX_ID = first(PX_ID),
-    active_time = sum(t_diff, na.rm = TRUE)
-  ) %>%
-  ungroup()
-
-full_list <- full_list %>%
-  left_join(active, by = "PX_ID")
-
-rm(active)
+# active <- full_list %>%
+#   filter(unique_date < final_removal_dt) %>%
+#   group_by(PX_ID) %>%
+#   mutate(
+#     t_diff = case_when(
+#       !(CANHX_STAT_CD %in% c(1999, 2999)) ~ t_stop - t_start
+#     )
+#   ) %>%
+#   summarise(
+#     PX_ID = first(PX_ID),
+#     active_time = sum(t_diff, na.rm = TRUE)
+#   ) %>%
+#   ungroup()
+# 
+# full_list <- full_list %>%
+#   left_join(active, by = "PX_ID")
+# 
+# rm(active)
 ```
 
 # Apply exclusion criteria
@@ -578,6 +629,64 @@ setwd("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP")
 save(full_list, file = "full_list_clean.RData")
 
 write_csv(full_list, "full_list_clean.csv")
+```
+
+# Create sample data of 100 random candidates for supplement
+``` {r sample_data}
+full_list_sample_px <- full_list %>% select(PX_ID) %>% unique() %>% sample_n(100)
+
+full_list_sample <- full_list %>% 
+  filter(PX_ID %in% full_list_sample_px$PX_ID) %>%
+  relocate(can_stat_active, .after = t_stop) %>%
+  relocate(rec_exception, .after = status_approved) %>%
+  relocate(on_waitlist, .after = final_removal_dt) %>%
+  relocate(CAN_REM_DT, .after = CAN_REM_CD) %>%
+  relocate(REC_TX_DT, .after = CANHX_STAT_CD)
+
+setwd("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP")
+
+write_csv(full_list, "full_list_sample.csv")
+```
+
+# Check for candidates with multiple simultaneous listings
+``` {r}
+# load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/heart_transplant_exceptions/11-1-22 Backup/full_list_clean.RData")
+# 
+# full_list_pers <- full_list  %>%
+#   left_join(cand_thor %>%
+#               select(PX_ID, PERS_ID),
+#             by = "PX_ID")
+# 
+# duplicates <- full_list_pers %>%
+#   select(PERS_ID, PX_ID, CAN_LISTING_CTR_ID) %>%
+#   unique() %>%
+#   group_by(PERS_ID) %>%
+#   filter(n()>1)
+# 
+# duplicates %>% select(PERS_ID) %>% n_distinct()
+# 
+# duplicates2 <- full_list_pers %>%
+#   select(PERS_ID, CAN_LISTING_CTR_ID) %>%
+#   unique() %>%
+#   group_by(PERS_ID, CAN_LISTING_CTR_ID) %>%
+#   filter(n()>1)
+# 
+# full_list_pers %>%
+#   filter(PX_ID %in% duplicates$PX_ID) %>%
+#   select(PERS_ID, PX_ID, CAN_LISTING_CTR_ID, unique_event, unique_date_start, unique_date_stop, CAN_LISTING_DT, CAN_REM_DT) %>%
+#   View()
+# 
+# full_list_pers %>%
+#   group_by(PERS_ID) %>%
+#   filter(n()>1) %>%
+#   select(PX_ID, PERS_ID, CAN_LISTING_CTR_ID) %>%
+#   View()
+# 
+# total_duplicates <- total %>%
+#   select(PERS_ID, PX_ID, CAN_LISTING_CTR_ID, CAN_LISTING_DT, CAN_REM_DT) %>%
+#   unique() %>%
+#   group_by(PERS_ID) %>%
+#   filter(n()>1)
 ```
 
 # See which deaths aren't being captured
