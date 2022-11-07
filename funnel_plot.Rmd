@@ -163,29 +163,29 @@ population_time <- ggplot(data = alive, aes(x = time)) +
     colour = "black",
     alpha = 0.75
   ) +
-  geom_ribbon(
-    aes(
-      ymax = alive_w_exception + alive_wo_exception + transplant_w_exception + transplant_wo_exception + delisted_w_exception,
-      ymin = alive_w_exception + alive_wo_exception + transplant_w_exception + transplant_wo_exception,
-      fill = "Delisted with exception"
-    ),
-    colour = "black",
-    alpha = 0.75
-  ) +
-  geom_ribbon(
-    aes(
-      ymax = alive_w_exception + alive_wo_exception + transplant_w_exception + transplant_wo_exception + delisted_w_exception + delisted_wo_exception,
-      ymin = alive_w_exception + alive_wo_exception + transplant_w_exception + transplant_wo_exception + delisted_w_exception,
-      fill = "Delisted without exception"
-    ),
-    colour = "black",
-    alpha = 0.75
-  ) +
+  # geom_ribbon(
+  #   aes(
+  #     ymax = alive_w_exception + alive_wo_exception + transplant_w_exception + transplant_wo_exception + delisted_w_exception,
+  #     ymin = alive_w_exception + alive_wo_exception + transplant_w_exception + transplant_wo_exception,
+  #     fill = "Delisted with exception"
+  #   ),
+  #   colour = "black",
+  #   alpha = 0.75
+  # ) +
+  # geom_ribbon(
+  #   aes(
+  #     ymax = alive_w_exception + alive_wo_exception + transplant_w_exception + transplant_wo_exception + delisted_w_exception + delisted_wo_exception,
+  #     ymin = alive_w_exception + alive_wo_exception + transplant_w_exception + transplant_wo_exception + delisted_w_exception,
+  #     fill = "Delisted without exception"
+  #   ),
+  #   colour = "black",
+  #   alpha = 0.75
+  # ) +
   labs(y = "Number of Candidates Alive", x = "Days Since Listing") +
   scale_fill_manual(values = cbPalette,
                     name = "",
-                    breaks = c("Alive with exception", "Alive without exception", "Transplanted with exception", "Transplanted without exception", "Delisted with exception", "Delisted without exception"),
-                    labels = c("Alive with exception", "Alive without exception", "Transplanted with exception", "Transplanted without exception", "Delisted with exception", "Delisted without exception")) +
+                    breaks = c("Alive with exception", "Alive without exception", "Transplanted with exception", "Transplanted without exception"), #"Delisted with exception", "Delisted without exception"),
+                    labels = c("Alive with exception", "Alive without exception", "Transplanted with exception", "Transplanted without exception")) + #, "Delisted with exception", "Delisted without exception")) +
   theme_minimal() + scale_x_continuous(breaks = seq(0, 100, 20)) + scale_y_continuous(breaks = seq(0, 13000, 1000))
 
 population_time
@@ -288,15 +288,15 @@ stat_time <- ggplot(data = status, aes(x = time)) +
     colour = "black",
     alpha = 0.75
   ) +
-  geom_ribbon(
-    aes(
-      ymax = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception + stat_4_w_exception + stat_4_wo_exception + stat_5 + stat_6 + transplant_w_exception + transplant_wo_exception + delisted_w_exception + delisted_wo_exception,
-      ymin = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception + stat_4_w_exception + stat_4_wo_exception + stat_5 + stat_6 + transplant_w_exception + transplant_wo_exception,
-      fill = "Delisted"
-    ),
-    colour = "black",
-    alpha = 0.75
-  ) +
+  # geom_ribbon(
+  #   aes(
+  #     ymax = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception + stat_4_w_exception + stat_4_wo_exception + stat_5 + stat_6 + transplant_w_exception + transplant_wo_exception + delisted_w_exception + delisted_wo_exception,
+  #     ymin = stat_1_w_exception + stat_1_wo_exception + stat_2_w_exception + stat_2_wo_exception + stat_3_w_exception + stat_3_wo_exception + stat_4_w_exception + stat_4_wo_exception + stat_5 + stat_6 + transplant_w_exception + transplant_wo_exception,
+  #     fill = "Delisted"
+  #   ),
+  #   colour = "black",
+  #   alpha = 0.75
+  # ) +
   labs(y = "Number of Candidates Alive", x = "Days Since Listing") +
   scale_fill_manual(
     name = "",
@@ -311,8 +311,8 @@ stat_time <- ggplot(data = status, aes(x = time)) +
       "Status 4 without exception" = "#FF7F00",
       "Status 5" = "#CAB2D6",
       "Status 6" = "#6A3D9A",
-      "Transplanted" = "#FFFF99",
-      "Delisted" = "#B15928"
+      "Transplanted" = "#FFFF99"#,
+      # "Delisted" = "#B15928"
     )
   ) +
   theme_minimal() + scale_x_continuous(breaks = seq(0, 100, 20)) + scale_y_continuous(breaks = seq(0, 13000, 1000))
