@@ -33,18 +33,19 @@ cand_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/cand_thor.s
 # Patient characteristics
 ```{r table_1}
 full_list_px <- full_list %>%
-  select(PX_ID, rec_exception_ever, rec_exception_init, exception_start, exception_length, survival_time) %>%
-  filter(rec_exception_ever == 0 | !is.na(exception_start)) %>%
-  distinct() %>%
+  select(PX_ID, rec_exception_ever, rec_exception_init, rec_exception_init_ever, exception_start, exception_length, survival_time, can_stat_active) %>%
   group_by(PX_ID) %>%
   summarise(PX_ID = PX_ID, 
             rec_exception_ever = rec_exception_ever, 
             rec_exception_init = rec_exception_init,
+            rec_exception_init_ever = rec_exception_init_ever,
+            # rec_exception_time = first(rec_exception_time),
             exception_start = if_else(rec_exception_ever == 1, min(exception_start, na.rm = TRUE), NA_real_),
-            exception_percent = sum(exception_length, na.rm = TRUE)/survival_time * 100
+            exception_percent = sum(exception_length, na.rm = TRUE)/survival_time * 100, 
+            can_stat_active = first(can_stat_active)
             ) %>%
-  distinct() %>%
   left_join(cand_thor, by = "PX_ID") %>%
+  distinct() %>%
   ungroup()
 
 fortable1 <- full_list_px %>%
@@ -186,13 +187,28 @@ fortable1 <- full_list_px %>%
     ),
     init_status = factor(
       case_when(
-        CAN_INIT_STAT == 2110 ~ "Status 1",
-        CAN_INIT_STAT == 2120 ~ "Status 2",
-        CAN_INIT_STAT == 2130 ~ "Status 3",
-        CAN_INIT_STAT == 2140 ~ "Status 4",
-        CAN_INIT_STAT == 2150 ~ "Status 5",
-        CAN_INIT_STAT == 2160 ~ "Status 6",
-        CAN_INIT_STAT == 2999 ~ "Temporarily inactive"
+        can_stat_active == 2110 ~ "Status 1",
+        can_stat_active == 2120 ~ "Status 2",
+        can_stat_active == 2130 ~ "Status 3",
+        can_stat_active == 2140 ~ "Status 4",
+        can_stat_active == 2150 ~ "Status 5",
+        can_stat_active == 2160 ~ "Status 6",
+        can_stat_active == 2999 ~ "Temporarily inactive"
+      )
+    ),
+    init_status_exception = factor(
+      case_when(
+        init_status == "Status 1" & rec_exception_init == "No initial status exception" ~ "Status 1 no exception",
+        init_status == "Status 1" & rec_exception_init == "Initial status exception" ~ "Status 1 exception",
+        init_status == "Status 2" & rec_exception_init == "No initial status exception" ~ "Status 2 no exception",
+        init_status == "Status 2" & rec_exception_init == "Initial status exception" ~ "Status 2 exception",
+        init_status == "Status 3" & rec_exception_init == "No initial status exception" ~ "Status 3 no exception",
+        init_status == "Status 3" & rec_exception_init == "Initial status exception" ~ "Status 3 exception",
+        init_status == "Status 4" & rec_exception_init == "No initial status exception" ~ "Status 4 no exception",
+        init_status == "Status 4" & rec_exception_init == "Initial status exception" ~ "Status 4 exception",
+        init_status == "Status 5" ~ "Status 5",
+        init_status == "Status 6" ~ "Status 6",
+        init_status == "Temporarily inactive" ~ "Temporarily inactive"
       )
     ),
     bsa = 0.007184 * (CAN_HGT_CM ^ 0.725) * (CAN_WGT_KG ^ 0.425),
@@ -280,7 +296,7 @@ var_label_list <- list(age = "Age at listing (years)",
                        rec_exception_ever = "Receipt of exception",
                        rec_exception_init = "Receipt of initial exception",
                        exception_start = "Time to initial exception",
-                       exception_percent = "Percentage of waitlist time spent in exception status",
+                       # exception_percent = "Percentage of waitlist time spent in exception status",
                        diabetes = "Diabetes",
                        cva = "CVA",
                        smoking = "Smoking",
@@ -335,6 +351,7 @@ fortable1 %>%
     # rec_exception_ever,
     # rec_exception_init,
     rec_exception_init_ever,
+    init_status_exception,
     age,
     sex,
     race,
@@ -365,58 +382,82 @@ fortable1 %>%
   add_overall() %>%
   as_gt() %>%
   gt::gtsave(
-    filename = "table1.png"
+    filename = "table1_overall_ever.png"
   )
 
-fortable1 %>%
+table1 <- function(status, name) {
+  fortable1 %>%
+  filter(
+    init_status == status
+  ) %>%
   select(
-    rec_exception_init_ever,
+    # rec_exception_ever,
+    rec_exception_init,
+    # rec_exception_init_ever,
+    init_status_exception,
     age,
     sex,
     race,
-    payor
-    # CAN_BMI,
-    # init_status
-  ) %>%
-  tbl_summary(by = rec_exception_init_ever,
-              missing = "no",
-              label = list(sex ~ "Female"),
-              value = list(sex ~ "Female")
-              ) %>%
-  add_p(test.args = all_tests("fisher.test") ~ list(workspace=2e7)) %>%
-  add_overall() %>%
-  as_gt() %>%
-  gt::gtsave(
-  filename = "table1_short1.png"
-  )
-
-fortable1 %>%
-  select(
-    rec_exception_init_ever,
-    # functional_status,
-    # primary_diagnosis,
-    # diabetes,
-    # cva,
-    init_status,
+    payor,
+    CAN_BMI,
+    # init_status,
+    functional_status,
+    primary_diagnosis,
+    diabetes,
+    cva,
     CAN_IABP,
     CAN_ECMO,
     lvad,
     other_mcs,
-    no_mcs
-    # exception_start
+    no_mcs,
+    exception_start
   ) %>%
-  tbl_summary(by = rec_exception_init_ever,
+  tbl_summary(by = rec_exception_init,
               missing = "no",
-              value = list(#diabetes ~ "Diabetes",
-                           #cva ~ "CVA",
+              label = list(sex ~ "Female"),
+              value = list(sex ~ "Female",
+                           diabetes ~ "Diabetes",
+                           cva ~ "CVA",
                            lvad ~ "Durable LVAD",
                            other_mcs ~ "Other MCS",
-                           no_mcs ~ "No MCS")
-              ) %>%
+                           no_mcs ~ "No MCS")) %>%
   add_p(test.args = all_tests("fisher.test") ~ list(workspace=2e7)) %>%
-  add_overall() %>%
   as_gt() %>%
   gt::gtsave(
-    filename = "table1_short2.png"
+    filename = name
   )
+}
+
+table1("Status 1", "table1_status1.png")
+table1("Status 2", "table1_status2.png")
+table1("Status 3", "table1_status3.png")
+table1("Status 4", "table1_status4.png")
+table1("Status 5", "table1_status5.png")
+table1("Status 6", "table1_status6.png")
+table1("Temporarily inactive", "table1_inactive.png")
+
+# full_list_px %>% group_by(can_stat_active) %>% count(rec_exception_init_ever)
+# full_list_px %>% group_by(can_stat_active) %>% count(rec_exception_time)
+# full_list_px %>% group_by(can_stat_active) %>% count(rec_exception_init)
+# 
+# table(full_list_px$rec_exception_init, full_list_px$rec_exception_time)
+# 
+# wtf <- full_list_px %>% 
+#   filter(rec_exception_init_ever != "Exception at listing" & 
+#            rec_exception_time == "Exception at listing")
+
+# full_list %>% 
+#   #filter(PX_ID %in% wtf$PX_ID) %>% 
+#   select(PX_ID, t_start, t_stop, rec_exception, rec_exception_ever, rec_exception_init, rec_exception_init_ever, rec_exception_time) %>% 
+#   View()
+# 
+# for_stack_stat1_exception <- for_stack %>% filter(can_stat_active == 2110 & rec_exception_time == "Exception at listing")
+# 
+# full_list_px_stat1_exception <- full_list_px %>% filter(can_stat_active == 2110 & rec_exception_time == "Exception at listing")
+# 
+# stat1_exception_diff <- for_stack_stat1_exception %>% filter(!PX_ID %in% full_list_px_stat1_exception$PX_ID)
+# 
+# stat1_exception_diff %>% select(PX_ID, t_start, t_stop, rec_exception, rec_exception_ever, rec_exception_init, rec_exception_init_ever, rec_exception_time) %>% View()
+# 
+# full_list_px %>% filter(PX_ID %in% stat1_exception_diff$PX_ID) %>% select(PX_ID, can_stat_active, rec_exception_ever, rec_exception_init, rec_exception_init_ever, rec_exception_time)
 ```
