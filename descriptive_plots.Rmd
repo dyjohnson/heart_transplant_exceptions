@@ -106,8 +106,22 @@ ggsave("status_approved_prop.png", width = 5, height = 5)
 
 ## Stacked bar chart
 ``` {r status_stack}
-# Select only rows with changes in status or exception status
+## Add a time-dependent variable for whether an exception was received at listing or later
 for_stack <- full_list %>%
+  mutate(rec_exception_time = factor(
+    case_when(
+      rec_exception_init == 1 &
+        t_start == 0 ~ "Exception at listing",
+      rec_exception == 1 &
+        t_start > 1 ~ "Exception after listing",
+      TRUE ~ "No exception"
+    ),
+    levels = c("Exception at listing",
+               "Exception after listing",
+               "No exception")
+  ))
+
+for_stack <- for_stack %>%
   group_by(PX_ID) %>%
   mutate(
     rec_exception_status = factor(
@@ -132,9 +146,6 @@ for_stack <- full_list %>%
         can_stat_active == 2160 ~ "Status 6"
       )
     ),
-    rec_exception_status_prev = lag(rec_exception_status),
-    rec_exception_status_change = case_when(rec_exception_status != rec_exception_status_prev | is.na(rec_exception_status_prev) ~ 1,
-                                            TRUE ~ 0),
     can_stat_active = factor(
       case_when(
         can_stat_active == 2110 ~ "Status 1",
@@ -156,21 +167,10 @@ for_stack <- full_list %>%
     rec_exception = factor(
       case_when(
         rec_exception == 1 ~ "Exception",
-        TRUE ~ "No exception"), 
+        TRUE ~ "No exception"),
       levels = c("Exception", "No exception")),
-    rec_exception_init_ever = factor(
-      case_when(
-        rec_exception == "Exception" & (exception_start == 0 | exception_start == 1) ~ "Exception at listing",
-        rec_exception == "Exception" & exception_start > 1 ~ "Exception after listing",
-        TRUE ~ "No exception"
-      ),
-      levels = c("Exception at listing",
-                 "Exception after listing",
-                 "No exception")
-    )
   ) %>%
-  filter(rec_exception_status_change == 1) %>%
-  select(-c(rec_exception_status_prev, rec_exception_status_change))
+  ungroup()
   
 ggplot(for_stack, aes(x = can_stat_active, fill = rec_exception)) + 
   geom_bar() + 
@@ -178,7 +178,7 @@ ggplot(for_stack, aes(x = can_stat_active, fill = rec_exception)) +
 
 ggsave("status_stack.png", width = 8, height = 5)
 
-plot <- ggplot(for_stack, aes(x = can_stat_active, fill = rec_exception_init_ever)) + 
+plot <- ggplot(for_stack, aes(x = can_stat_active, fill = rec_exception_time)) + 
   geom_bar() + 
   labs(x = "Status", y = "Number of Status Justifications", fill = "")
 
@@ -188,7 +188,9 @@ plot +
 
 ggsave("status_stack_split.png", width = 8, height = 5)
 
-for_stack %>% group_by(can_stat_active) %>% count(rec_exception_init_ever)
+for_stack %>% group_by(can_stat_active) %>% count(rec_exception_time)
+
+table(for_stack$rec_exception_time)
 ```
 
 # Chart of exceptions by time of exception
