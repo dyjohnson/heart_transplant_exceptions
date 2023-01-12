@@ -183,7 +183,8 @@ plot_model(
     "Status 1"
   ),
   title = "Mixed Effects Model with Center Random Effects",
-  axis.title = "Hazard Ratio"
+  axis.title = "Hazard Ratio",
+  grid.breaks = c(0.1, 1, 10, 100)
 )
 
 ggsave("coxme_stat_ex_long2.png", width = 7, height = 5)
@@ -235,19 +236,20 @@ coxme_stats_ex <- plot_models(
   coxme_stat4_ex,
   axis.labels = "Exception",
   m.labels = c("Status 1", "Status 2", "Status 3", "Status 4"),
-  title = "Mixed Effects Model with Center Random Effects",
+  # title = "Mixed Effects Model with Center Random Effects",
   legend.title = "",
-  axis.title = "Hazard Ratio",
+  axis.title = "Hazard Ratio of Pre-Transplant Mortality",
   spacing = 1,
   show.values = TRUE,
-  show.p = TRUE
+  show.p = TRUE,
+  grid.breaks = c(0.1, 1, 10)
 )
 
 coxme_stats_ex$layers[[4]]$aes_params$hjust <- 0.4
 
-coxme_stats_ex
+coxme_stats_ex 
 
-ggsave("coxme_stats_ex.png", width = 7, height = 5)
+ggsave("coxme_stats_ex2.png", width = 7, height = 5)
 ```
 # All statuses and exceptions, LVAD interaction, and random center effects
 ``` {r coxme_lvad}
