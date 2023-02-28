@@ -305,3 +305,275 @@ coxme_lvad3 <- coxme(Surv(t_start, t_stop, death) ~ can_stat_active + except_typ
 
 summary(coxme_lvad3)
 ```
+
+# Post-transplant survival analysis
+``` {r post-transplant_survival}
+library(survival)
+library(ggsurvfit)
+
+# Filter the data to patients who were transplanted before 2021 and all subsequent follow-up observations
+full_list_post_tx <- full_list %>%
+  group_by(PX_ID) %>%
+  filter(REC_TX_DT == min(REC_TX_DT) &
+           REC_TX_DT < as.Date("2021-01-01")) %>%
+  ungroup() %>%
+  filter(unique_date_stop >= REC_TX_DT) %>%
+  group_by(PX_ID) %>%
+  summarise(PX_ID = PX_ID,
+            death_dt = max(death_dt),
+            REC_TX_DT = REC_TX_DT,
+            can_stat_active = first(can_stat_active),
+            rec_exception = first(rec_exception),
+            CAN_LISTING_CTR_ID = CAN_LISTING_CTR_ID) %>%
+  unique() %>%
+  ungroup()
+
+# Add survival time
+full_list_post_tx <- full_list_post_tx %>%
+  mutate(
+    survival_time = as.numeric(difftime(death_dt, REC_TX_DT, units = "days")),
+    death_post_tx = if_else(!is.na(survival_time) & survival_time <= 365, 1, 0),
+    survival_time = if_else(survival_time <= 365 & !is.na(survival_time),
+                            survival_time,
+                            400)
+  )
+     
+# Relabel rec_exception
+full_list_post_tx <- full_list_post_tx %>%
+  mutate(rec_exception = if_else(rec_exception == 0, "No exception", "Exception"))
+
+# Kaplan-Meier curves
+## All statuses
+fit_exception_all <- survfit(
+  Surv(survival_time, death_post_tx) ~ rec_exception,
+  data = full_list_post_tx
+) 
+
+fit_exception_all %>%
+  ggsurvplot(
+    ylim = c(0.8, 1),
+    xlim = c(0, 365),
+    xlab = "Time (days)",
+    break.x.by = 60,
+    ggtheme = theme_bw(),
+    pval = TRUE,
+    pval.size = 4,
+    pval.coord = c(340, 1),
+    conf.int = TRUE,
+    legend.title = "",
+    legend.labs = c(
+      "Exception",
+      "No Exception"
+    ),
+    risk.table = TRUE
+  )
+
+ggsave("km_curve_all.png", width = 7, height = 5)
+
+## Status 1
+fit_exception_1 <- survfit(
+  Surv(survival_time, death_post_tx) ~ rec_exception,
+  data = full_list_post_tx %>% filter(can_stat_active == 2110)
+) 
+
+fit_exception_1 %>%
+  ggsurvplot(
+    ylim = c(0.8, 1),
+    xlim = c(0, 365),
+    xlab = "Time (days)",
+    break.x.by = 60,
+    ggtheme = theme_bw(),
+    pval = TRUE,
+    pval.size = 4,
+    pval.coord = c(340, 1),
+    conf.int = TRUE,
+    legend.title = "",
+    legend.labs = c(
+      "Exception",
+      "No Exception"
+    ),
+    risk.table = TRUE
+  )
+
+ggsave("km_curve_1.png", width = 7, height = 5)
+
+## Status 2
+fit_exception_2 <- survfit(
+  Surv(survival_time, death_post_tx) ~ rec_exception,
+  data = full_list_post_tx %>% filter(can_stat_active == 2120)
+) 
+
+fit_exception_2 %>%
+  ggsurvplot(
+    ylim = c(0.8, 1),
+    xlim = c(0, 365),
+    xlab = "Time (days)",
+    break.x.by = 60,
+    ggtheme = theme_bw(),
+    pval = TRUE,
+    pval.size = 4,
+    pval.coord = c(340, 1),
+    conf.int = TRUE,
+    legend.title = "",
+    legend.labs = c(
+      "Exception",
+      "No Exception"
+    ),
+    risk.table = TRUE
+  )
+
+ggsave("km_curve_2.png", width = 7, height = 5)
+
+## Status 3
+fit_exception_3 <- survfit(
+  Surv(survival_time, death_post_tx) ~ rec_exception,
+  data = full_list_post_tx %>% filter(can_stat_active == 2130)
+) 
+
+fit_exception_3 %>%
+  ggsurvplot(
+    ylim = c(0.8, 1),
+    xlim = c(0, 365),
+    xlab = "Time (days)",
+    break.x.by = 60,
+    ggtheme = theme_bw(),
+    pval = TRUE,
+    pval.size = 4,
+    pval.coord = c(340, 1),
+    conf.int = TRUE,
+    legend.title = "",
+    legend.labs = c(
+      "Exception",
+      "No Exception"
+    ),
+    risk.table = TRUE
+  )
+
+ggsave("km_curve_3.png", width = 7, height = 5)
+
+## Status 4
+fit_exception_4 <- survfit(
+  Surv(survival_time, death_post_tx) ~ rec_exception,
+  data = full_list_post_tx %>% filter(can_stat_active == 2140)
+) 
+
+fit_exception_4 %>%
+  ggsurvplot(
+    ylim = c(0.8, 1),
+    xlim = c(0, 365),
+    xlab = "Time (days)",
+    break.x.by = 60,
+    ggtheme = theme_bw(),
+    pval = TRUE,
+    pval.size = 4,
+    pval.coord = c(340, 1),
+    conf.int = TRUE,
+    legend.title = "",
+    legend.labs = c(
+      "Exception",
+      "No Exception"
+    ),
+    risk.table = TRUE
+  )
+
+ggsave("km_curve_4.png", width = 7, height = 5)
+
+# Cox model
+full_list_post_tx_cox <- full_list_post_tx %>%
+  mutate(
+    can_stat_active = factor(
+      case_when(
+        can_stat_active == 2110 ~ "Status 1",
+        can_stat_active == 2120 ~ "Status 2",
+        can_stat_active == 2130 ~ "Status 3",
+        can_stat_active == 2140 ~ "Status 4",
+        can_stat_active == 2150 ~ "Status 5",
+        can_stat_active == 2160 ~ "Status 6"
+      )
+    ),
+    can_stat_active = relevel(can_stat_active, ref = "Status 6")
+  )
+
+coxme_stat_ex_post <- coxme(Surv(survival_time, death_post_tx) ~ can_stat_active + rec_exception + (1 | CAN_LISTING_CTR_ID), data = full_list_post_tx_cox)
+
+summary(coxme_stat_ex_post)
+exp(confint(coxme_stat_ex_post))
+
+plot_model(
+  coxme_stat_ex_post,
+  show.values = TRUE,
+  value.offset = .3,
+  axis.labels = c(
+    "Exception",
+    "Status 5",
+    "Status 4",
+    "Status 3",
+    "Status 2",
+    "Status 1"
+  ),
+  title = "Mixed Effects Model with Center Random Effects",
+  axis.title = "Hazard Ratio",
+  grid.breaks = c(0.1, 1, 10)
+)
+
+ggsave("coxme_stat_ex_post.png", width = 7, height = 5)
+```
+
+# Predicted 90-day mortality by status and exception
+```{r mortality_rates}
+# Calculate baseline hazards
+baseline_haz <- basehaz(coxph_stat_ex_long)
+
+# Extract the model coefficients
+coef_values <- coef(coxph_stat_ex_long)
+
+# Calculate the linear predictor (LP) values for each status level
+LP_values <- predict(coxph_stat_ex_long, newdata = data.frame(rec_exception_status = c("Status 1 no exception", "Status 1 exception", "Status 2 no exception", "Status 2 exception", "Status 3 no exception", "Status 3 exception", "Status 4 no exception", "Status 4 exception", "Status 5", "Status 6")), type = "lp")
+
+# Calculate the predicted survival probabilities at 90 days for each status level
+surv_prob_90days <- exp(-exp(LP_values)*baseline_haz[90,1])
+
+# Print the predicted survival probabilities at 90 days for each status level
+print(surv_prob_90days)
+
+# Compare survival probabilities
+## Status 1
+prop.test(c(
+  surv_prob_90days[1] * sum(full_list_cox$rec_exception_status == "Status 1 no exception"),
+  surv_prob_90days[2] * sum(full_list_cox$rec_exception_status == "Status 1 exception")
+),
+c(
+  sum(full_list_cox$rec_exception_status == "Status 1 no exception"),
+  sum(full_list_cox$rec_exception_status == "Status 1 exception")
+))
+
+## Status 2
+prop.test(c(
+  surv_prob_90days[3] * sum(full_list_cox$rec_exception_status == "Status 2 no exception"),
+  surv_prob_90days[4] * sum(full_list_cox$rec_exception_status == "Status 2 exception")
+),
+c(
+  sum(full_list_cox$rec_exception_status == "Status 2 no exception"),
+  sum(full_list_cox$rec_exception_status == "Status 2 exception")
+))
+
+## Status 3
+prop.test(c(
+  surv_prob_90days[5] * sum(full_list_cox$rec_exception_status == "Status 3 no exception"),
+  surv_prob_90days[6] * sum(full_list_cox$rec_exception_status == "Status 3 exception")
+),
+c(
+  sum(full_list_cox$rec_exception_status == "Status 3 no exception"),
+  sum(full_list_cox$rec_exception_status == "Status 3 exception")
+))
+
+## Status 4
+prop.test(c(
+  surv_prob_90days[7] * sum(full_list_cox$rec_exception_status == "Status 4 no exception"),
+  surv_prob_90days[8] * sum(full_list_cox$rec_exception_status == "Status 4 exception")
+),
+c(
+  sum(full_list_cox$rec_exception_status == "Status 4 no exception"),
+  sum(full_list_cox$rec_exception_status == "Status 4 exception")
+))
+```

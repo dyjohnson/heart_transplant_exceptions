@@ -474,11 +474,11 @@ full_list <- full_list %>%
   ungroup()
 ```
 
-## Delete events over 60 days after delisting
+## Delete deaths over 60 days after delisting
 ```{r trim_events}
 full_list <- full_list %>%
   filter(
-    unique_date <= final_removal_dt + days(60)
+    unique_date <= final_removal_dt + days(60) # All events over 60 days after delisting are deaths
   )
 ```
 

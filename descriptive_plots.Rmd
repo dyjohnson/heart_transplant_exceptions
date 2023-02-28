@@ -244,3 +244,254 @@ ggplot(e, aes(exception_length_mo)) +
 
 ggsave("exception_by_length.png")
 ```
+
+# Percentage of exception requests approved by region
+``` {r exception_approval}
+library(tidyverse)
+library(haven)
+library(geodist)
+library(purrr)
+library(ggmap)
+library(tidycensus)
+library(tigris)
+library(sf)
+library(usa)
+library(ggspatial)
+library(beepr)
+library(censusxy)
+library(tidygeocoder)
+library(geosphere)
+library(ggalt)
+library(ggsci)
+library(ggthemes)
+library(ggrepel)
+library(ggpubr)
+library(RColorBrewer)
+library(kableExtra)
+library(weights)
+library(gridExtra)
+library(ggpubr)
+library(grid)
+```
+
+```{r data cleaning, include = FALSE}
+# # Add CAN_LISTING_CTR_ID to JustFormHR through JustId
+JustFormHR <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/SupplementalData2206/ThoracicRegistration/JustFormHR.sas7bdat")
+cand_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/cand_thor.sas7bdat")
+
+load("C:/Users/dyjohnson/Box/Heart Data Pipeline/RData files/full_list_pubsaf2206.RData")
+```
+
+
+``` {r}
+full_list_ctr_fixed <- full_list %>%
+  select(-CAN_LISTING_CTR_ID) %>%
+  left_join(cand_thor %>%
+              select(PX_ID, CAN_LISTING_CTR_ID),
+            by = "PX_ID")
+
+JustId_ctr_id <- full_list_ctr_fixed %>% filter(!is.na(JustId)) %>% select(JustId, CAN_LISTING_CTR_ID)
+
+JustFormHR_ctr <- left_join(JustFormHR, JustId_ctr_id, by = "JustId") %>% unique()
+
+exception_requests <- JustFormHR_ctr %>%
+  filter(Exception == 1 & ApplicationStatus != 26) %>%
+  mutate(approved = if_else(ApplicationStatus %in% c(8, 10, 12, 13, 14, 16, 18, 19, 27), 1, 0))
+
+# centers with geocodes
+center_long_lat <- read_csv("center_geocodes.csv") %>%
+  rename(long = lon, CTR_NAME = ENTIRE_NAME) %>%
+  mutate(CAN_LISTING_CTR_ID = CTR_ID)
+
+# clean up NA and incorrectly coded regions
+
+institution <- haven::read_sas("institution.sas7bdat")
+
+opo2region <- institution %>%
+  select(CTR_CD, CTR_ID, REGION)
+
+load("opo_shapes.R") 
+
+opo_shapes <- opo_shapes %>%
+  rename(CTR_CD = OPO)
+
+region_shapes <- inner_join(opo_shapes, opo2region) %>%
+  group_by(REGION) %>% summarise(estimate = sum(estimate), do_union = TRUE)
+
+df <- exception_requests %>%
+  left_join(center_long_lat) %>%
+  left_join(opo2region)
+
+df_by_region <- df %>% 
+  group_by(REGION) %>%
+  summarise(region_requests = n(), region_approved = sum(approved)) %>%
+  mutate(region_proportion = region_approved/region_requests)
+  
+chisq.test(df_by_region$region_proportion)
+```
+
+# Proportion of Exceptions at Time of Listing by Region
+
+```{r region map}
+regionmapproportion <- ggplot(df_by_region %>%
+                                left_join(region_shapes)) +
+  geom_sf(aes(fill = region_proportion, geometry = geometry), size = 0.2) +
+  scale_fill_viridis_c(limits = c(0.93, 1)) +
+  theme_void() +
+  labs(fill = "Proportion of Exception\nRequests Approved") +
+  theme(title = element_text(size = 10))
+
+regionmapproportion
+
+ggsave("regionmapproportion.png", regionmapproportion)
+```
+
+
+# Exception rates over time
+``` {r exception_rates}
+library(zoo)
+
+# Convert the exception_date column to a Date object
+exception_requests$FormEffectiveDt <- as.Date(exception_requests$FormEffectiveDt)
+
+# Create a time series object with the number of exceptions per day
+exceptions_ts <- as.zoo(table(exception_requests$FormEffectiveDt))
+
+# Calculate the rolling weekly average
+exceptions_rolling <- rollapplyr(exceptions_ts, width = 7, FUN = mean, fill = NA)
+
+# Convert the rolling average back to a data frame
+exceptions_df <- data.frame(date = index(exceptions_rolling) + as.Date("2018-10-18"), 
+                            exceptions = as.numeric(exceptions_rolling))
+
+# Create time-trend graph with rolling weekly average
+ggplot(data = exceptions_df, aes(x = date, y = exceptions)) +
+  geom_smooth(se = FALSE, span = 0.1) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  labs(title = "Rolling Weekly Average of Heart Transplant Exceptions Used",
+       x = "Year",
+       y = "Exceptions") +
+  theme_bw()
+
+ggsave("exception_time_trend.png", width = 7, height = 5)
+
+# Table of exception utilization by year using JustFormHR
+```
+
+# Check number of Status 2 exception candidates with IABPs who did not meet hemodynamic requirements
+``` {r stat2_hemo}
+df <- full_list
+df_stat2ex <- df %>% filter(can_stat_active == 2120 & rec_exception_ever == 1)
+
+load("C:/Users/dyjohnson/Box/Heart Data Pipeline/RData files/full_list_pubsaf2206.RData")
+JustFormHR <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/SupplementalData2206/ThoracicRegistration/JustFormHR.sas7bdat")
+
+full_list_stat2ex <- full_list %>%
+  filter(PX_ID %in% df_stat2ex$PX_ID) %>%
+  left_join(
+    JustFormHR %>%
+      select(JustId, FormEffectiveDt, FormExpirationDt, ApplicationStatus),
+    by = "JustId"
+  ) %>%
+  select(
+    PX_ID,
+    unique_date,
+    CAN_IABP,
+    CANHX_STAT_CD,
+    mean_arterial_pressure,
+    cardiac_index,
+    PCWP,
+    SVO2,
+    JustId,
+    FormEffectiveDt,
+    FormExpirationDt,
+    ApplicationStatus,
+    RequestedCandStatCd,
+    Exception
+  )
+
+## Add a copy of CANHX_STAT_CD where a candidate's most recent status is carried through temporarily inactive periods
+full_list_stat2ex <- full_list_stat2ex %>%
+  mutate(can_stat_active = factor(case_when(
+    !(CANHX_STAT_CD %in% c(1999, 2999)) ~ CANHX_STAT_CD
+    ))) %>%
+  group_by(PX_ID) %>%
+  fill(can_stat_active, .direction = "down") %>%
+  ungroup()
+
+# Remove justification forms that aren't for approved exceptions
+full_list_stat2ex <- full_list_stat2ex %>%
+  mutate(
+    across(
+      c(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, ApplicationStatus, Exception),
+      ~ case_when(Exception == 1 & ApplicationStatus %in% c(8, 10, 12, 13, 14, 16, 19, 27) ~ .)
+    )
+  )
+
+# Fill application data from JustFormHR through exception period
+full_list_stat2ex <- full_list_stat2ex %>% 
+  group_by(PX_ID) %>%
+  fill(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, Exception, ApplicationStatus, .direction = "down") %>%
+  mutate(
+    across(
+      c(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, Exception, ApplicationStatus),
+      ~ case_when(unique_date <= FormExpirationDt ~ .)
+    )
+  ) %>%
+  ungroup()
+
+# status_approved represents a candidate's approved status and fills forward
+full_list_stat2ex <- full_list_stat2ex %>%
+  mutate(status_approved = case_when(
+    Exception == 1 &
+      ApplicationStatus %in% c(8, 10, 12, 13, 14, 16, 19, 27) ~ RequestedCandStatCd
+    )
+  ) %>%
+  group_by(PX_ID) %>%
+  fill(status_approved, .direction = "down") %>%
+  ungroup()
+
+full_list_stat2ex <- full_list_stat2ex %>%
+  mutate(
+    rec_exception = if_else(CANHX_STAT_CD == status_approved & unique_date <= FormExpirationDt & unique_date + days(7) >= FormEffectiveDt, 1, 0, missing = 0)
+  )
+
+# Add date when candidates were approved for Status 2 exceptions
+full_list_stat2ex <- full_list_stat2ex %>%
+  mutate(
+    stat2ex_date = case_when(
+      status_approved == 2120 &
+        rec_exception == 1 ~ FormEffectiveDt
+    )
+  ) %>%
+  group_by(PX_ID) %>%
+  fill(stat2ex_date, .direction = "up") %>%
+  ungroup()
+
+# Filter data to observations <=2 days before being approved for Status 2 exception
+full_list_stat2ex <- full_list_stat2ex %>%
+  group_by(PX_ID) %>%
+  mutate(days_to_stat2ex = as.numeric(difftime(stat2ex_date, unique_date, units = "days"))) %>%
+  filter(between(days_to_stat2ex, 0, 2)) %>%
+  ungroup() %>%
+  group_by(PX_ID, stat2ex_date) %>%
+  filter(unique_date == max(unique_date)) %>%
+  ungroup()
+
+# Check hemodynamic requirements
+full_list_stat2ex <- full_list_stat2ex %>%
+  mutate(
+    hemo_req = if_else(
+      mean_arterial_pressure < 60 |
+        cardiac_index < 2.0 |
+        PCWP > 15 |
+        SVO2 < 50.0,
+      1,
+      0
+    ),
+    hemo_req = if_else(is.na(hemo_req), 0, hemo_req)
+  )
+
+# Calculate proportion of Status 2 exceptions for candidates who had IABPs and didn't meet the hemodynamic requirements
+sum(full_list_stat2ex$CAN_IABP == 1 & full_list_stat2ex$hemo_req == 0)/n_distinct(full_list_stat2ex)
+```
