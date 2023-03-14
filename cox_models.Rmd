@@ -11,6 +11,8 @@ output:
     toc: yes
     toc_depth: 2
     toc_float: yes
+editor_options: 
+  chunk_output_type: inline
 ---
 # Setup
 
@@ -101,15 +103,6 @@ full_list_cox <- full_list %>%
   )
 ```
 
-# Filter to centers with at least one death
-``` {r filter_deaths}
-# full_list_cox <- full_list_cox %>% 
-#   group_by(CAN_LISTING_CTR_ID) %>%
-#   mutate(ctr_deaths = sum(death)) %>%
-#   ungroup() %>%
-#   filter(ctr_deaths > 0)
-```
-
 # All statuses and exceptions
 ``` {r coxph_stat_ex_long}
 coxph_stat_ex_long <- coxph(Surv(t_start, t_stop, death) ~ rec_exception_status, data = full_list_cox)
@@ -135,7 +128,7 @@ plot_model(
   axis.title = "Hazard Ratio"
 )
 
-ggsave("coxph_stat_ex_long.png")
+ggsave("coxph_stat_ex_long.tiff", dpi = 1200)
 ```
 
 # All statuses and exceptions and random center effects
@@ -163,7 +156,7 @@ plot_model(
   axis.title = "Hazard Ratio"
 )
 
-ggsave("coxme_stat_ex_long.png")
+ggsave("coxme_stat_ex_long.tiff", dpi = 1200)
 
 coxme_stat_ex_long2 <- coxme(Surv(t_start, t_stop, death) ~ can_stat_active + rec_exception + (1 | CAN_LISTING_CTR_ID), data = full_list_cox)
 
@@ -187,7 +180,7 @@ plot_model(
   grid.breaks = c(0.1, 1, 10, 100)
 )
 
-ggsave("coxme_stat_ex_long2.png", width = 7, height = 5)
+ggsave("coxme_stat_ex_long2.tiff", dpi = 1200, width = 8400, height = 6000)
 ```
 
 # Each status and exceptions and random center effects
@@ -249,8 +242,9 @@ coxme_stats_ex$layers[[4]]$aes_params$hjust <- 0.4
 
 coxme_stats_ex 
 
-ggsave("coxme_stats_ex2.png", width = 7, height = 5)
+ggsave("coxme_stats_ex2.tiff", dpi = 1200, width = 8400, height = 6000)
 ```
+
 # All statuses and exceptions, LVAD interaction, and random center effects
 ``` {r coxme_lvad}
 coxme_lvad <- coxme(Surv(t_start, t_stop, death) ~ can_stat_active + rec_exception*lvad + (1 | CAN_LISTING_CTR_ID), data = full_list_cox)
@@ -275,7 +269,7 @@ plot_model(
   axis.title = "Hazard Ratio"
 )
 
-ggsave("coxme_lvad.png", width = 7, height = 5)
+ggsave("coxme_lvad.tiff", dpi = 1200, width = 8400, height = 6000)
 
 coxme_lvad2 <- coxme(Surv(t_start, t_stop, death) ~ can_stat_active + except_type + (1 | CAN_LISTING_CTR_ID), data = full_list_cox)
 
@@ -299,15 +293,15 @@ plot_model(
   axis.title = "Hazard Ratio"
 )
 
-ggsave("coxme_lvad2.png", width = 7, height = 5)
+ggsave("coxme_lvad2.tiff", dpi = 1200, width = 8400, height = 6000)
 
 coxme_lvad3 <- coxme(Surv(t_start, t_stop, death) ~ can_stat_active + except_type + (1 | CAN_LISTING_CTR_ID), data = full_list_cox %>% mutate(except_type = relevel(except_type, ref = "except_no_vad")))
 
 summary(coxme_lvad3)
 ```
 
-# Post-transplant survival analysis
-``` {r post-transplant_survival}
+# Post-transplant Kaplan-Meier curves
+``` {r post_km}
 library(survival)
 library(ggsurvfit)
 
@@ -342,6 +336,9 @@ full_list_post_tx <- full_list_post_tx %>%
 full_list_post_tx <- full_list_post_tx %>%
   mutate(rec_exception = if_else(rec_exception == 0, "No exception", "Exception"))
 
+# Tabulate post-transplant outcomes
+full_list_post_tx %>% count(can_stat_active, rec_exception, death_post_tx)
+
 # Kaplan-Meier curves
 ## All statuses
 fit_exception_all <- survfit(
@@ -349,26 +346,43 @@ fit_exception_all <- survfit(
   data = full_list_post_tx
 ) 
 
+### Exception survival rate
+sum(
+  full_list_post_tx$rec_exception == "Exception" &
+    full_list_post_tx$death_post_tx == 0
+) /
+  sum(full_list_post_tx$rec_exception == "Exception")
+
+### Standard survival rate
+sum(
+  full_list_post_tx$rec_exception == "No exception" &
+    full_list_post_tx$death_post_tx == 0
+) /
+  sum(full_list_post_tx$rec_exception == "No exception")
+
+### Kaplan-Meier curve
+tiff("km_curve_all.tiff", res = 1200, width = 8400, height = 6000, units = "px", pointsize = 12)
+
 fit_exception_all %>%
   ggsurvplot(
-    ylim = c(0.8, 1),
+    ylim = c(0.75, 1),
     xlim = c(0, 365),
     xlab = "Time (days)",
     break.x.by = 60,
     ggtheme = theme_bw(),
     pval = TRUE,
     pval.size = 4,
-    pval.coord = c(340, 1),
+    pval.coord = c(330, 1),
     conf.int = TRUE,
     legend.title = "",
     legend.labs = c(
       "Exception",
-      "No Exception"
+      "No exception"
     ),
     risk.table = TRUE
   )
 
-ggsave("km_curve_all.png", width = 7, height = 5)
+dev.off()
 
 ## Status 1
 fit_exception_1 <- survfit(
@@ -376,26 +390,51 @@ fit_exception_1 <- survfit(
   data = full_list_post_tx %>% filter(can_stat_active == 2110)
 ) 
 
+### Exception survival rate
+sum(
+  full_list_post_tx$can_stat_active == 2110 &
+    full_list_post_tx$rec_exception == "Exception" &
+    full_list_post_tx$death_post_tx == 0
+) /
+  sum(
+    full_list_post_tx$can_stat_active == 2110 &
+      full_list_post_tx$rec_exception == "Exception"
+  )
+
+### Standard survival rate
+sum(
+  full_list_post_tx$can_stat_active == 2110 &
+    full_list_post_tx$rec_exception == "No exception" &
+    full_list_post_tx$death_post_tx == 0
+) /
+  sum(
+    full_list_post_tx$can_stat_active == 2110 &
+      full_list_post_tx$rec_exception == "No exception"
+  )
+
+### Kaplan-Meier curve
+tiff("km_curve_1.tiff", res = 1200, width = 8400, height = 6000, units = "px", pointsize = 12)
+
 fit_exception_1 %>%
   ggsurvplot(
-    ylim = c(0.8, 1),
+    ylim = c(0.75, 1),
     xlim = c(0, 365),
     xlab = "Time (days)",
     break.x.by = 60,
     ggtheme = theme_bw(),
     pval = TRUE,
     pval.size = 4,
-    pval.coord = c(340, 1),
+    pval.coord = c(330, 1),
     conf.int = TRUE,
     legend.title = "",
     legend.labs = c(
       "Exception",
-      "No Exception"
+      "No exception"
     ),
     risk.table = TRUE
   )
 
-ggsave("km_curve_1.png", width = 7, height = 5)
+dev.off()
 
 ## Status 2
 fit_exception_2 <- survfit(
@@ -403,26 +442,51 @@ fit_exception_2 <- survfit(
   data = full_list_post_tx %>% filter(can_stat_active == 2120)
 ) 
 
+### Exception survival rate
+sum(
+  full_list_post_tx$can_stat_active == 2120 &
+    full_list_post_tx$rec_exception == "Exception" &
+    full_list_post_tx$death_post_tx == 0
+) /
+  sum(
+    full_list_post_tx$can_stat_active == 2120 &
+      full_list_post_tx$rec_exception == "Exception"
+  )
+
+### Standard survival rate
+sum(
+  full_list_post_tx$can_stat_active == 2120 &
+    full_list_post_tx$rec_exception == "No exception" &
+    full_list_post_tx$death_post_tx == 0
+) /
+  sum(
+    full_list_post_tx$can_stat_active == 2120 &
+      full_list_post_tx$rec_exception == "No exception"
+  )
+
+### Kaplan-Meier curve
+tiff("km_curve_2.tiff", res = 1200, width = 8400, height = 6000, units = "px", pointsize = 12)
+
 fit_exception_2 %>%
   ggsurvplot(
-    ylim = c(0.8, 1),
+    ylim = c(0.75, 1),
     xlim = c(0, 365),
     xlab = "Time (days)",
     break.x.by = 60,
     ggtheme = theme_bw(),
     pval = TRUE,
     pval.size = 4,
-    pval.coord = c(340, 1),
+    pval.coord = c(330, 1),
     conf.int = TRUE,
     legend.title = "",
     legend.labs = c(
       "Exception",
-      "No Exception"
+      "No exception"
     ),
     risk.table = TRUE
   )
 
-ggsave("km_curve_2.png", width = 7, height = 5)
+dev.off()
 
 ## Status 3
 fit_exception_3 <- survfit(
@@ -430,26 +494,51 @@ fit_exception_3 <- survfit(
   data = full_list_post_tx %>% filter(can_stat_active == 2130)
 ) 
 
+### Exception survival rate
+sum(
+  full_list_post_tx$can_stat_active == 2130 &
+    full_list_post_tx$rec_exception == "Exception" &
+    full_list_post_tx$death_post_tx == 0
+) /
+  sum(
+    full_list_post_tx$can_stat_active == 2130 &
+      full_list_post_tx$rec_exception == "Exception"
+  )
+
+### Standard survival rate
+sum(
+  full_list_post_tx$can_stat_active == 2130 &
+    full_list_post_tx$rec_exception == "No exception" &
+    full_list_post_tx$death_post_tx == 0
+) /
+  sum(
+    full_list_post_tx$can_stat_active == 2130 &
+      full_list_post_tx$rec_exception == "No exception"
+  )
+
+### Kaplan-Meier curve
+tiff("km_curve_3.tiff", res = 1200, width = 8400, height = 6000, units = "px", pointsize = 12)
+
 fit_exception_3 %>%
   ggsurvplot(
-    ylim = c(0.8, 1),
+    ylim = c(0.75, 1),
     xlim = c(0, 365),
     xlab = "Time (days)",
     break.x.by = 60,
     ggtheme = theme_bw(),
     pval = TRUE,
     pval.size = 4,
-    pval.coord = c(340, 1),
+    pval.coord = c(330, 1),
     conf.int = TRUE,
     legend.title = "",
     legend.labs = c(
       "Exception",
-      "No Exception"
+      "No exception"
     ),
     risk.table = TRUE
   )
 
-ggsave("km_curve_3.png", width = 7, height = 5)
+dev.off()
 
 ## Status 4
 fit_exception_4 <- survfit(
@@ -457,27 +546,59 @@ fit_exception_4 <- survfit(
   data = full_list_post_tx %>% filter(can_stat_active == 2140)
 ) 
 
+### Exception survival rate
+sum(
+  full_list_post_tx$can_stat_active == 2140 &
+    full_list_post_tx$rec_exception == "Exception" &
+    full_list_post_tx$death_post_tx == 0
+) /
+  sum(
+    full_list_post_tx$can_stat_active == 2140 &
+      full_list_post_tx$rec_exception == "Exception"
+  )
+
+### Standard survival rate
+sum(
+  full_list_post_tx$can_stat_active == 2140 &
+    full_list_post_tx$rec_exception == "No exception" &
+    full_list_post_tx$death_post_tx == 0
+) /
+  sum(
+    full_list_post_tx$can_stat_active == 2140 &
+      full_list_post_tx$rec_exception == "No exception"
+  )
+
+### Kaplan-Meier curve
+tiff("km_curve_4.tiff", res = 1200, width = 8400, height = 6000, units = "px", pointsize = 12)
+
 fit_exception_4 %>%
   ggsurvplot(
-    ylim = c(0.8, 1),
+    ylim = c(0.75, 1),
     xlim = c(0, 365),
     xlab = "Time (days)",
     break.x.by = 60,
     ggtheme = theme_bw(),
     pval = TRUE,
     pval.size = 4,
-    pval.coord = c(340, 1),
+    pval.coord = c(330, 1),
     conf.int = TRUE,
     legend.title = "",
     legend.labs = c(
       "Exception",
-      "No Exception"
+      "No exception"
     ),
     risk.table = TRUE
   )
 
-ggsave("km_curve_4.png", width = 7, height = 5)
+dev.off()
 
+970/(144+970) # Exception
+1540/(168+1540) # No Exception
+
+```
+
+# Post-transplant survival Cox model
+```{r post_cox}
 # Cox model
 full_list_post_tx_cox <- full_list_post_tx %>%
   mutate(
@@ -516,7 +637,7 @@ plot_model(
   grid.breaks = c(0.1, 1, 10)
 )
 
-ggsave("coxme_stat_ex_post.png", width = 7, height = 5)
+ggsave("coxme_stat_ex_post.tiff", dpi = 1200, width = 8400, height = 6000)
 ```
 
 # Predicted 90-day mortality by status and exception

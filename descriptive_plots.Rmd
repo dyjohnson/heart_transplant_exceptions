@@ -18,6 +18,29 @@ output:
 library(knitr)
 library(tidyverse)
 library(ggthemes)
+library(haven)
+library(geodist)
+library(purrr)
+library(ggmap)
+library(tidycensus)
+library(tigris)
+library(sf)
+library(usa)
+library(ggspatial)
+library(beepr)
+library(censusxy)
+library(tidygeocoder)
+library(geosphere)
+library(ggalt)
+library(ggsci)
+library(ggrepel)
+library(ggpubr)
+library(RColorBrewer)
+library(kableExtra)
+library(weights)
+library(gridExtra)
+library(ggpubr)
+library(grid)
 
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
@@ -73,7 +96,7 @@ ggplot(d, aes(status_approved2)) +
   geom_bar() +
   labs(x = "Status Exception Approved", y = "Count")
 
-ggsave("status_approved.png", width = 5, height = 5)
+ggsave("status_approved.tiff", dpi = 1200, width = 5, height = 5)
 ```
 
 ## Exception proportion by status
@@ -101,7 +124,7 @@ ggplot(status_approved_prop, aes(can_stat_active, proportion_ex)) +
   geom_col() +
   labs(x = "Status Exception Approved", y = "Proportion of Candidates with Exceptions")
 
-ggsave("status_approved_prop.png", width = 5, height = 5)
+ggsave("status_approved_prop.tiff", dpi = 1200, width = 5, height = 5)
 ```
 
 ## Stacked bar chart
@@ -122,30 +145,30 @@ for_stack <- full_list %>%
   ))
 
 for_stack <- for_stack %>%
-  group_by(PX_ID) %>%
+  # group_by(PX_ID) %>%
   mutate(
-    rec_exception_status = factor(
-      case_when(
-        can_stat_active == 2110 &
-          rec_exception == 0 ~ "Status 1 no exception",
-        can_stat_active == 2110 &
-          rec_exception == 1 ~ "Status 1 exception",
-        can_stat_active == 2120 &
-          rec_exception == 0 ~ "Status 2 no exception",
-        can_stat_active == 2120 &
-          rec_exception == 1 ~ "Status 2 exception",
-        can_stat_active == 2130 &
-          rec_exception == 0 ~ "Status 3 no exception",
-        can_stat_active == 2130 &
-          rec_exception == 1 ~ "Status 3 exception",
-        can_stat_active == 2140 &
-          rec_exception == 0 ~ "Status 4 no exception",
-        can_stat_active == 2140 &
-          rec_exception == 1 ~ "Status 4 exception",
-        can_stat_active == 2150 ~ "Status 5",
-        can_stat_active == 2160 ~ "Status 6"
-      )
-    ),
+    # rec_exception_status = factor(
+    #   case_when(
+    #     can_stat_active == 2110 &
+    #       rec_exception == 0 ~ "Status 1 no exception",
+    #     can_stat_active == 2110 &
+    #       rec_exception == 1 ~ "Status 1 exception",
+    #     can_stat_active == 2120 &
+    #       rec_exception == 0 ~ "Status 2 no exception",
+    #     can_stat_active == 2120 &
+    #       rec_exception == 1 ~ "Status 2 exception",
+    #     can_stat_active == 2130 &
+    #       rec_exception == 0 ~ "Status 3 no exception",
+    #     can_stat_active == 2130 &
+    #       rec_exception == 1 ~ "Status 3 exception",
+    #     can_stat_active == 2140 &
+    #       rec_exception == 0 ~ "Status 4 no exception",
+    #     can_stat_active == 2140 &
+    #       rec_exception == 1 ~ "Status 4 exception",
+    #     can_stat_active == 2150 ~ "Status 5",
+    #     can_stat_active == 2160 ~ "Status 6"
+    #   )
+    # ),
     can_stat_active = factor(
       case_when(
         can_stat_active == 2110 ~ "Status 1",
@@ -163,30 +186,30 @@ for_stack <- for_stack %>%
         "Status 5",
         "Status 6"
       )
-    ),
-    rec_exception = factor(
-      case_when(
-        rec_exception == 1 ~ "Exception",
-        TRUE ~ "No exception"),
-      levels = c("Exception", "No exception")),
-  ) %>%
+    )#,
+    # rec_exception = factor(
+    #   case_when(
+    #     rec_exception == 1 ~ "Exception",
+    #     TRUE ~ "No exception"),
+    #   levels = c("Exception", "No exception")),
+  ) #%>%
   ungroup()
   
 ggplot(for_stack, aes(x = can_stat_active, fill = rec_exception)) + 
   geom_bar() + 
   labs(x = "Status", y = "Number of Status Justifications", fill = "")
 
-ggsave("status_stack.png", width = 8, height = 5)
+ggsave("status_stack.tiff", dpi = 1200, width = 8, height = 5)
 
 plot <- ggplot(for_stack, aes(x = can_stat_active, fill = rec_exception_time)) + 
   geom_bar() + 
-  labs(x = "Status", y = "Number of Status Justifications", fill = "")
+  labs(x = "", y = "Number of Status Justifications", fill = "")
 
 plot +
   theme_gdocs() + 
   scale_fill_gdocs()
 
-ggsave("status_stack_split.png", width = 8, height = 5)
+ggsave("status_stack_split.tiff", dpi = 1200, width = 8, height = 5)
 
 for_stack %>% group_by(can_stat_active) %>% count(rec_exception_time)
 
@@ -225,7 +248,7 @@ ggplot(d, aes(status_approved2, t_start)) +
   coord_cartesian(ylim = quantile(d$t_start, c(0.1, 0.9))) +
   labs(x = "Status Exception Approved", y = "Day Exception Approved")
 
-ggsave("exception_by_time.png", width = 5, height = 5)
+ggsave("exception_by_time.tiff", dpi = 1200, width = 5, height = 5)
 ```
 
 # Bar chart of exceptions by duration of exceptions
@@ -242,48 +265,17 @@ ggplot(e, aes(exception_length_mo)) +
   geom_histogram(binwidth = 1) +
   labs(x = "Status Exception Length (months)", y = "Count")
 
-ggsave("exception_by_length.png")
+ggsave("exception_by_length.tiff", dpi = 1200)
 ```
 
 # Percentage of exception requests approved by region
-``` {r exception_approval}
-library(tidyverse)
-library(haven)
-library(geodist)
-library(purrr)
-library(ggmap)
-library(tidycensus)
-library(tigris)
-library(sf)
-library(usa)
-library(ggspatial)
-library(beepr)
-library(censusxy)
-library(tidygeocoder)
-library(geosphere)
-library(ggalt)
-library(ggsci)
-library(ggthemes)
-library(ggrepel)
-library(ggpubr)
-library(RColorBrewer)
-library(kableExtra)
-library(weights)
-library(gridExtra)
-library(ggpubr)
-library(grid)
-```
-
-```{r data cleaning, include = FALSE}
-# # Add CAN_LISTING_CTR_ID to JustFormHR through JustId
+``` {r exceptions_map}
+# Add CAN_LISTING_CTR_ID to JustFormHR through JustId
 JustFormHR <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/SupplementalData2206/ThoracicRegistration/JustFormHR.sas7bdat")
 cand_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/cand_thor.sas7bdat")
 
 load("C:/Users/dyjohnson/Box/Heart Data Pipeline/RData files/full_list_pubsaf2206.RData")
-```
 
-
-``` {r}
 full_list_ctr_fixed <- full_list %>%
   select(-CAN_LISTING_CTR_ID) %>%
   left_join(cand_thor %>%
@@ -297,6 +289,8 @@ JustFormHR_ctr <- left_join(JustFormHR, JustId_ctr_id, by = "JustId") %>% unique
 exception_requests <- JustFormHR_ctr %>%
   filter(Exception == 1 & ApplicationStatus != 26) %>%
   mutate(approved = if_else(ApplicationStatus %in% c(8, 10, 12, 13, 14, 16, 18, 19, 27), 1, 0))
+
+sum(exception_requests$approved)/n_distinct(exception_requests)
 
 # centers with geocodes
 center_long_lat <- read_csv("center_geocodes.csv") %>%
@@ -328,11 +322,7 @@ df_by_region <- df %>%
   mutate(region_proportion = region_approved/region_requests)
   
 chisq.test(df_by_region$region_proportion)
-```
 
-# Proportion of Exceptions at Time of Listing by Region
-
-```{r region map}
 regionmapproportion <- ggplot(df_by_region %>%
                                 left_join(region_shapes)) +
   geom_sf(aes(fill = region_proportion, geometry = geometry), size = 0.2) +
@@ -343,9 +333,8 @@ regionmapproportion <- ggplot(df_by_region %>%
 
 regionmapproportion
 
-ggsave("regionmapproportion.png", regionmapproportion)
+ggsave("regionmapproportion.tiff", dpi = 1200)
 ```
-
 
 # Exception rates over time
 ``` {r exception_rates}
@@ -373,15 +362,44 @@ ggplot(data = exceptions_df, aes(x = date, y = exceptions)) +
        y = "Exceptions") +
   theme_bw()
 
-ggsave("exception_time_trend.png", width = 7, height = 5)
+ggsave("exception_time_trend.tiff", dpi = 1200, width = 7, height = 5)
+```
 
-# Table of exception utilization by year using JustFormHR
+# Exception rates over time
+``` {r}
+# Create a time series object with the number of exceptions per day
+load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
+full_list_ts <- as.zoo(table(full_list$CAN_LISTING_DT))
+
+# Calculate the rolling weekly average
+full_list_rolling <- rollapplyr(full_list_ts, width = 7, FUN = mean, fill = NA)
+
+# Convert the rolling average back to a data frame
+full_list_df <- data.frame(date = index(full_list_rolling) + as.Date("2018-10-18"), 
+                            listings = as.numeric(full_list_rolling))
+
+# Create time-trend graph with rolling weekly average
+ggplot(data = full_list_df, aes(x = date, y = listings)) +
+  geom_smooth(se = FALSE, span = 0.1) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  labs(title = "Rolling Weekly Average of Heart Transplant Listings",
+       x = "Year",
+       y = "Listings") +
+  theme_bw()
+
+ggsave("listing_time_trend.tiff", dpi = 1200, width = 7, height = 5)
 ```
 
 # Check number of Status 2 exception candidates with IABPs who did not meet hemodynamic requirements
 ``` {r stat2_hemo}
+# Load data
+load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
+
 df <- full_list
-df_stat2ex <- df %>% filter(can_stat_active == 2120 & rec_exception_ever == 1)
+df_stat2ex <- df %>% 
+  group_by(PX_ID) %>%
+  filter(first(can_stat_active) == 2120 & rec_exception_init == 1) %>%
+  ungroup()
 
 load("C:/Users/dyjohnson/Box/Heart Data Pipeline/RData files/full_list_pubsaf2206.RData")
 JustFormHR <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/SupplementalData2206/ThoracicRegistration/JustFormHR.sas7bdat")
@@ -396,7 +414,9 @@ full_list_stat2ex <- full_list %>%
   select(
     PX_ID,
     unique_date,
+    unique_event,
     CAN_IABP,
+    CAN_VAD_TY,
     CANHX_STAT_CD,
     mean_arterial_pressure,
     cardiac_index,
@@ -410,88 +430,64 @@ full_list_stat2ex <- full_list %>%
     Exception
   )
 
-## Add a copy of CANHX_STAT_CD where a candidate's most recent status is carried through temporarily inactive periods
-full_list_stat2ex <- full_list_stat2ex %>%
-  mutate(can_stat_active = factor(case_when(
-    !(CANHX_STAT_CD %in% c(1999, 2999)) ~ CANHX_STAT_CD
-    ))) %>%
-  group_by(PX_ID) %>%
-  fill(can_stat_active, .direction = "down") %>%
-  ungroup()
-
-# Remove justification forms that aren't for approved exceptions
+# Extract listing date
 full_list_stat2ex <- full_list_stat2ex %>%
   mutate(
-    across(
-      c(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, ApplicationStatus, Exception),
-      ~ case_when(Exception == 1 & ApplicationStatus %in% c(8, 10, 12, 13, 14, 16, 19, 27) ~ .)
-    )
-  )
-
-# Fill application data from JustFormHR through exception period
-full_list_stat2ex <- full_list_stat2ex %>% 
-  group_by(PX_ID) %>%
-  fill(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, Exception, ApplicationStatus, .direction = "down") %>%
-  mutate(
-    across(
-      c(JustId, FormEffectiveDt, FormExpirationDt, RequestedCandStatCd, Exception, ApplicationStatus),
-      ~ case_when(unique_date <= FormExpirationDt ~ .)
-    )
-  ) %>%
-  ungroup()
-
-# status_approved represents a candidate's approved status and fills forward
-full_list_stat2ex <- full_list_stat2ex %>%
-  mutate(status_approved = case_when(
-    Exception == 1 &
-      ApplicationStatus %in% c(8, 10, 12, 13, 14, 16, 19, 27) ~ RequestedCandStatCd
-    )
+    CAN_LISTING_DT = case_when(grepl("CAN_LISTING_DT", unique_event) ~ unique_date)
   ) %>%
   group_by(PX_ID) %>%
-  fill(status_approved, .direction = "down") %>%
+  fill(CAN_LISTING_DT, .direction = "downup") %>%
   ungroup()
 
-full_list_stat2ex <- full_list_stat2ex %>%
-  mutate(
-    rec_exception = if_else(CANHX_STAT_CD == status_approved & unique_date <= FormExpirationDt & unique_date + days(7) >= FormEffectiveDt, 1, 0, missing = 0)
-  )
-
-# Add date when candidates were approved for Status 2 exceptions
-full_list_stat2ex <- full_list_stat2ex %>%
-  mutate(
-    stat2ex_date = case_when(
-      status_approved == 2120 &
-        rec_exception == 1 ~ FormEffectiveDt
-    )
-  ) %>%
+# Filter data to last observation <=2 days before listing
+temp1 <- full_list_stat2ex %>%
   group_by(PX_ID) %>%
-  fill(stat2ex_date, .direction = "up") %>%
-  ungroup()
-
-# Filter data to observations <=2 days before being approved for Status 2 exception
-full_list_stat2ex <- full_list_stat2ex %>%
-  group_by(PX_ID) %>%
-  mutate(days_to_stat2ex = as.numeric(difftime(stat2ex_date, unique_date, units = "days"))) %>%
+  mutate(days_to_stat2ex = as.numeric(difftime(CAN_LISTING_DT, unique_date, units = "days"))) %>%
   filter(between(days_to_stat2ex, 0, 2)) %>%
   ungroup() %>%
   group_by(PX_ID, stat2ex_date) %>%
   filter(unique_date == max(unique_date)) %>%
   ungroup()
 
+full_list_stat2ex <- full_list_stat2ex %>%
+  filter(unique_date == CAN_LISTING_DT)
+
 # Check hemodynamic requirements
 full_list_stat2ex <- full_list_stat2ex %>%
   mutate(
-    hemo_req = if_else(
+    hemo_req = case_when(
       mean_arterial_pressure < 60 |
         cardiac_index < 2.0 |
         PCWP > 15 |
-        SVO2 < 50.0,
-      1,
-      0
-    ),
-    hemo_req = if_else(is.na(hemo_req), 0, hemo_req)
+        SVO2 < 50.0 ~ 1, # Meets hemodynamic requirements
+      !is.na(mean_arterial_pressure) |
+        !is.na(cardiac_index) |
+        !is.na(PCWP) |
+        !is.na(SVO2) ~ 0, # Does not meet hemodynamic requirements
+      TRUE ~ 2 # Missing hemodynamic requirements
+    )
   )
 
-# Calculate proportion of Status 2 exceptions for candidates who had IABPs and didn't meet the hemodynamic requirements
+# IABP
+sum(full_list_stat2ex$CAN_IABP == 1)
+sum(full_list_stat2ex$CAN_IABP == 1)/n_distinct(full_list_stat2ex)
+
+sum(full_list_stat2ex$CAN_IABP == 1)
+sum(full_list_stat2ex$CAN_IABP == 1)/n_distinct(full_list_stat2ex)
+
+# IABP and no hemodynamics
+sum(full_list_stat2ex$CAN_IABP == 1 & full_list_stat2ex$hemo_req == 2)
+sum(full_list_stat2ex$CAN_IABP == 1 & full_list_stat2ex$hemo_req == 2)/n_distinct(full_list_stat2ex)
+
+# IABP and good hemodynamics
+sum(full_list_stat2ex$CAN_IABP == 1 & full_list_stat2ex$hemo_req == 0)
 sum(full_list_stat2ex$CAN_IABP == 1 & full_list_stat2ex$hemo_req == 0)/n_distinct(full_list_stat2ex)
+
+# Durable LVAD and no hemodynamics
+sum(full_list_stat2ex$CAN_VAD_TY == 2 & full_list_stat2ex$hemo_req == 2)
+sum(full_list_stat2ex$CAN_VAD_TY == 2 & full_list_stat2ex$hemo_req == 2)/n_distinct(full_list_stat2ex)
+
+# Durable LVAD and good hemodynamics
+sum(full_list_stat2ex$CAN_VAD_TY == 2 & full_list_stat2ex$hemo_req == 0)
+sum(full_list_stat2ex$CAN_VAD_TY == 2 & full_list_stat2ex$hemo_req == 0)/n_distinct(full_list_stat2ex)
 ```

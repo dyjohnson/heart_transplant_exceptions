@@ -62,7 +62,7 @@ full_list <- full_list %>%
   )
 ```
 
-## Extract listing, removal, and transplant dates
+## Extract listing date
 ``` {r CAN_LISTING_DT}
 full_list <- full_list %>%
   mutate(
