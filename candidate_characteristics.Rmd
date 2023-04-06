@@ -30,6 +30,11 @@ load("C:/Users/dyjohnson/OneDrive/Documents/Research/SRP/full_list_clean.RData")
 cand_thor <- read_sas("C:/Users/dyjohnson/Box/SAF 2022 Q2/pubsaf2206/cand_thor.sas7bdat")
 ```
 
+# Number of transplant centers
+```{r transplant_centers}
+full_list %>% select(CAN_LISTING_CTR_ID) %>% n_distinct()
+```
+
 # Patient characteristics
 ```{r table_1}
 full_list_px <- full_list %>%
