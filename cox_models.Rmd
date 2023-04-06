@@ -180,7 +180,47 @@ plot_model(
   grid.breaks = c(0.1, 1, 10, 100)
 )
 
-ggsave("coxme_stat_ex_long2.tiff", dpi = 1200, width = 8400, height = 6000)
+ggsave("coxme_stat_ex_long2.tiff", dpi = 1200, width = 8, height = 5)
+```
+
+# All statuses and exceptions stratified by center
+```{r coxph_stat_ex_strat}
+coxph_stat_ex_strat <- coxph(Surv(t_start, t_stop, death) ~ can_stat_active + rec_exception + strata(CAN_LISTING_CTR_ID), data = full_list_cox)
+
+summary(coxph_stat_ex_strat)
+exp(confint(coxph_stat_ex_strat))
+
+plot_model(
+  coxph_stat_ex_strat,
+  show.values = TRUE,
+  value.offset = .3,
+  axis.labels = c(
+    "Exception",
+    "Status 5",
+    "Status 4",
+    "Status 3",
+    "Status 2",
+    "Status 1"
+  ),
+  title = "",
+  axis.title = "Hazard Ratio",
+  grid.breaks = c(0.1, 1, 10, 100)
+)
+
+ggsave("coxph_stat_ex_strat.tiff", dpi = 1200, width = 8, height = 5)
+```
+
+# Hausman test to compare fixed and random center effects models
+``` {r hausman}
+# Calculate the coefficients and covariance matrices
+b_FE <- coef(coxph_stat_ex_strat)
+b_RE <- fixef(coxme_stat_ex_long2)
+vc_FE <- vcov(coxph_stat_ex_strat)
+vc_RE <- vcov(coxme_stat_ex_long2)
+
+# Calculate the test statistic and p-value
+haux <- t(b_FE - b_RE) %*% solve(vc_FE - vc_RE) %*% (b_FE - b_RE)
+pvalue <- 1 - pchisq(haux, df = 6)
 ```
 
 # Each status and exceptions and random center effects
@@ -242,7 +282,7 @@ coxme_stats_ex$layers[[4]]$aes_params$hjust <- 0.4
 
 coxme_stats_ex 
 
-ggsave("coxme_stats_ex2.tiff", dpi = 1200, width = 8400, height = 6000)
+ggsave("coxme_stats_ex2.tiff", dpi = 1200, width = 8, height = 6)
 ```
 
 # All statuses and exceptions, LVAD interaction, and random center effects
@@ -269,7 +309,7 @@ plot_model(
   axis.title = "Hazard Ratio"
 )
 
-ggsave("coxme_lvad.tiff", dpi = 1200, width = 8400, height = 6000)
+ggsave("coxme_lvad.tiff", dpi = 1200, width = 8, height = 6)
 
 coxme_lvad2 <- coxme(Surv(t_start, t_stop, death) ~ can_stat_active + except_type + (1 | CAN_LISTING_CTR_ID), data = full_list_cox)
 
@@ -293,7 +333,7 @@ plot_model(
   axis.title = "Hazard Ratio"
 )
 
-ggsave("coxme_lvad2.tiff", dpi = 1200, width = 8400, height = 6000)
+ggsave("coxme_lvad2.tiff", dpi = 1200, width = 8, height = 6)
 
 coxme_lvad3 <- coxme(Surv(t_start, t_stop, death) ~ can_stat_active + except_type + (1 | CAN_LISTING_CTR_ID), data = full_list_cox %>% mutate(except_type = relevel(except_type, ref = "except_no_vad")))
 
@@ -637,7 +677,7 @@ plot_model(
   grid.breaks = c(0.1, 1, 10)
 )
 
-ggsave("coxme_stat_ex_post.tiff", dpi = 1200, width = 8400, height = 6000)
+ggsave("coxme_stat_ex_post.tiff", dpi = 1200, width = 8, height = 6)
 ```
 
 # Predicted 90-day mortality by status and exception
