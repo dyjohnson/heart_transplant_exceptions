@@ -16,6 +16,6 @@ The funnel plot file creates a funnel plot describing the statuses and outcomes 
 
 The Cox models file fits mixed-effects Cox proportional hazard models to the time-series dataset and generates estimates of waitlist survival benefit associated with exceptions.
 
-The statistical appendix contains detailed methodology.
+The supplementary material contains detailed methodology.
 
 Please reach out to dyjohnson@uchicago.edu with any questions
